@@ -1,0 +1,800 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reparto de albaranes</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="iconos/icon-192.png">
+<link rel="apple-touch-icon" href="iconos/apple-touch-icon.png">
+<meta name="theme-color" content="#1e5fd8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Reparto">
+<style>
+  :root { --bg:#f4f5f7; --card:#fff; --tx:#1c2430; --mut:#6b7686; --line:#dde1e7; --ac:#1e5fd8; --warn:#b45309; --bad:#b91c1c; --ok:#15803d; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#14181f; --card:#1d232d; --tx:#e6e9ee; --mut:#93a0b2; --line:#2e3744; --ac:#6ea0ff; --warn:#f0a43a; --bad:#ff7b7b; --ok:#5fd18a; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--tx); font:15px/1.4 system-ui, Segoe UI, Roboto, sans-serif; }
+  main { max-width:980px; margin:0 auto; padding:16px; }
+  h1 { font-size:20px; margin:4px 0 12px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:14px; }
+  #drop { border:2px dashed var(--line); text-align:center; padding:26px 12px; cursor:pointer; color:var(--mut); }
+  #drop.over { border-color:var(--ac); color:var(--ac); }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .grow { flex:1; }
+  input[type=text], select { font:inherit; padding:7px 9px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--tx); min-width:0; }
+  button { font:inherit; padding:8px 14px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--tx); cursor:pointer; }
+  button.main { background:var(--ac); border-color:var(--ac); color:#fff; font-weight:600; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  button.mini { padding:3px 8px; }
+  h2 { font-size:16px; margin:0; }
+  .tag { font-size:12px; color:var(--mut); }
+  .tot { margin:8px 0; font-weight:600; }
+  .tot span { font-weight:400; color:var(--mut); }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  td, th { text-align:left; padding:6px 6px; border-top:1px solid var(--line); vertical-align:middle; }
+  th { color:var(--mut); font-weight:500; font-size:12px; border-top:0; }
+  td.n { text-align:right; white-space:nowrap; }
+  .mark { color:var(--warn); font-weight:700; }
+  .pend { background:rgba(180,83,9,.10); }
+  .moved { color:var(--ac); font-size:12px; }
+  .msg { padding:8px 10px; border-radius:8px; margin:6px 0; font-size:14px; }
+  .msg.warn { background:rgba(180,83,9,.12); color:var(--warn); }
+  .msg.bad { background:rgba(185,28,28,.12); color:var(--bad); }
+  .msg.ok { background:rgba(21,128,61,.12); color:var(--ok); }
+  .msg.obs { background:rgba(180,83,9,.16); color:var(--tx); border-left:4px solid var(--warn); }
+  .msg.obs ul { margin:6px 0 0; padding-left:20px; }
+  #prog { height:6px; background:var(--line); border-radius:3px; overflow:hidden; margin-top:8px; display:none; }
+  #prog i { display:block; height:100%; width:0; background:var(--ac); }
+  details summary { cursor:pointer; color:var(--mut); }
+  @media (max-width:600px) { td.hide { display:none; } }
+</style>
+</head>
+<body>
+<main>
+  <div class="row"><h1 class="grow">Reparto de albaranes</h1><button id="instalar" style="display:none">Instalar app</button></div>
+  <div id="ayudaIos" class="msg ok" style="display:none">Para instalarla en el iPhone: botón Compartir → «Añadir a pantalla de inicio».</div>
+
+  <div class="card" id="drop">
+    Arrastra aquí los PDF (albaranes y cartas de porte) o pulsa para elegirlos
+    <input id="file" type="file" accept="application/pdf" multiple hidden>
+  </div>
+  <div id="avisos"></div>
+  <div id="rutas"></div>
+
+  <div class="card" id="pie" style="display:none">
+    <div class="row" style="margin-bottom:10px">
+      <span class="tag">PDF:</span>
+      <label><input type="radio" name="modo" value="separados" checked> Carta de porte y albaranes separados</label>
+      <label><input type="radio" name="modo" value="junto"> Carta de porte junto a su ruta</label>
+      <label><input type="radio" name="modo" value="todo"> Todo en un PDF</label>
+    </div>
+    <div class="row" style="margin-bottom:10px">
+      <label><input type="checkbox" id="conImg" checked> Además, una imagen de la 1ª hoja de cada carta de porte</label>
+    </div>
+    <div class="row">
+      <button id="gen" class="main">Generar PDF</button>
+      <span class="tag" id="genInfo"></span>
+      <span class="grow"></span>
+      <button id="limpiar">Empezar de nuevo</button>
+    </div>
+    <div id="prog"><i></i></div>
+    <div id="resultado" style="display:none; margin-top:10px">
+      <table id="resLista"></table>
+      <div class="row" style="margin-top:10px">
+        <span class="grow"></span>
+        <button id="descargar" class="main">Descargar todos</button>
+        <button id="enviar" style="display:none">Enviar todos…</button>
+      </div>
+    </div>
+  </div>
+
+  <details class="card" id="recordados"><summary>Clientes sin ruta recordados</summary><div id="recLista"></div></details>
+</main>
+
+<script id="pdfjs-src" type="text/plain">/*PDFJS*/</script>
+<script id="pdfjs-worker" type="text/plain">/*WORKER*/</script>
+<script>/*CORE*/</script>
+<script>/*PDFLIB*/</script>
+<script>
+(function () {
+  // pdf.js y su worker van dentro de este mismo archivo (funciona abriéndolo con doble clic, sin internet).
+  // El worker se carga en la propia página (window.pdfjsWorker): abriendo el archivo con doble clic no se permiten workers aparte.
+  (0, eval)(document.getElementById('pdfjs-src').textContent);
+  (0, eval)(document.getElementById('pdfjs-worker').textContent);
+  var pdfjsLib = window.pdfjsLib;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+  var fmt = function (n) { return (Math.round(n * 100) / 100).toString().replace('.', ','); };
+  // números como los escribe la carta: 1.234,500 (dec decimales, miles con punto)
+  var fmtCarta = function (n, dec) {
+    var p = n.toFixed(dec).split('.');
+    return p[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.') + (dec ? ',' + p[1] : '');
+  };
+
+  // ---- memoria local (conductor/matrícula por ruta, clientes sin ruta ya asignados) ----
+  function lee(k, def) { try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : def; } catch (e) { return def; } }
+  function guarda(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  var memCliente = lee('alb.clienteRuta', {});   // cliente -> nombre de ruta
+  var memChofer = lee('alb.chofer', {});         // nombre de ruta -> {conductor, matricula}
+
+  // ---- estado ----
+  var cartas = [];      // {diario, ruta, albaranes[], paginas:[{doc,n,info}], sinRuta, nombreArchivo}
+  var albs = {};        // numero -> {numero, cliente, fecha, paginas:[{doc,n,info}], por5L, total5L, subrayar}
+  var asig = {};        // numero -> diario destino (movimientos hechos)
+  var orden = [];       // diarios en orden de impresión
+  var chofer = {};      // diario -> {conductor, matricula, incluir}
+
+  function esSinRuta(c) { return /sin\s*ruta/i.test((c.ruta || '') + ' ' + (c.nombreArchivo || '')); }
+
+  // ---- carga de PDF ----
+  async function cargar(files) {
+    avisa('Leyendo ' + files.length + ' archivo(s)…', 'ok');
+    for (var f = 0; f < files.length; f++) {
+      var bytes = new Uint8Array(await files[f].arrayBuffer());
+      var doc = await pdfjsLib.getDocument({ data: bytes.slice() }).promise;
+      doc._bytes = bytes;   // el original, para copiar sus páginas al PDF final
+      var ultimaCarta = null, ultimoAlb = null;
+      for (var n = 1; n <= doc.numPages; n++) {
+        var p = await doc.getPage(n), alto = p.getViewport({ scale: 1 }).height, tc = await p.getTextContent();
+        var texto = tc.items.map(function (i) { return i.str; }).join(' ');
+        if (/CARTA DE PORTE/.test(texto)) {
+          var ci = AlbCore.parseCarta(tc.items, alto);
+          var c = cartas.filter(function (x) { return x.diario === ci.diario; })[0];
+          if (!c || c !== ultimaCarta) {
+            if (c) cartas.splice(cartas.indexOf(c), 1);
+            c = { diario: ci.diario, ruta: ci.ruta, albaranes: ci.albaranes, paginas: [], nombreArchivo: files[f].name };
+            cartas.push(c);
+          }
+          if (ci.albaranes.length > c.albaranes.length) c.albaranes = ci.albaranes;
+          c.paginas.push({ doc: doc, n: n, info: ci });
+          ultimaCarta = c; ultimoAlb = null;
+        } else {
+          var ai = AlbCore.parseAlbaran(tc.items, alto);
+          var numero = ai.numero || (ultimoAlb && ultimoAlb.numero);
+          if (!numero) continue;
+          var a = albs[numero];
+          if (!a || a !== ultimoAlb) {
+            a = { numero: numero, cliente: ai.cliente, fecha: ai.fecha, paginas: [], lineas: [], archivo: files[f].name };
+            albs[numero] = a;
+          }
+          if (!a.cliente) a.cliente = ai.cliente;
+          if (!a.observacion) a.observacion = ai.observacion;
+          a.paginas.push({ doc: doc, n: n, info: ai });
+          a.lineas = a.lineas.concat(ai.lineas);
+          ultimoAlb = a; ultimaCarta = null;
+        }
+      }
+    }
+    Object.keys(albs).forEach(resume);
+    cartas.forEach(function (c) { c.sinRuta = esSinRuta(c); preparaCarta(c); });
+    cartas.forEach(function (c) {
+      if (orden.indexOf(c.diario) < 0) orden.push(c.diario);
+      if (!chofer[c.diario]) {
+        var m = memChofer[c.ruta] || {};
+        chofer[c.diario] = { conductor: m.conductor || '', matricula: m.matricula || '', incluir: true };
+      }
+    });
+    orden.sort(function (a, b) { return (porDiario(a).sinRuta ? 1 : 0) - (porDiario(b).sinRuta ? 1 : 0); });
+    aplicaRecordados();
+    pinta();
+  }
+
+  function resume(num) {
+    var a = albs[num];
+    a.total5L = 0; a.por5L = {};
+    var otros = false;
+    a.lineas.forEach(function (l) {
+      if (l.cinco) {
+        a.total5L += l.cantidad;
+        var p = a.por5L[l.codigo] = a.por5L[l.codigo] || { codigo: l.codigo, desc: l.desc, cantidad: 0 };
+        p.cantidad += l.cantidad;
+      } else otros = true;
+    });
+    a.subrayar = otros || a.total5L === 0;
+    // zumo de naranja de 5L, normal y HPP por separado (limón y pomelo no cuentan aquí)
+    a.naranjaN = 0; a.naranjaHPP = 0;
+    a.lineas.forEach(function (l) {
+      if (!l.cinco || !/naranja/i.test(l.desc)) return;
+      if (/\bhpp\b/i.test(l.desc)) a.naranjaHPP += l.cantidad; else a.naranjaN += l.cantidad;
+    });
+    // artículos y peso del albarán (el peso sale de las líneas: kg, litros, gramos de la bandeja…)
+    a.art = {}; a.pesoConocido = 0; a.udsSinPeso = 0;
+    a.lineas.forEach(function (l) {
+      a.art[l.codigo] = (a.art[l.codigo] || 0) + l.cantidad;
+      var pu = AlbCore.pesoUnidad(l.unidad);
+      if (pu == null) a.udsSinPeso += l.cantidad; else a.pesoConocido += l.cantidad * pu;
+    });
+  }
+
+  // Datos originales de la carta: cantidades por artículo, peso, y cuánto pesa de media una unidad sin peso
+  // escrito («ud.», «Bdja»…) en esta carta, para estimar esas unidades cuando un albarán cambia de ruta.
+  function preparaCarta(c) {
+    c.art = {}; c.peso = null;
+    c.paginas.forEach(function (p) {
+      if (p.info.peso && c.peso == null) c.peso = p.info.peso.valor;
+      if (p.info.articulos) p.info.articulos.filas.forEach(function (f) { c.art[f.codigo] = (c.art[f.codigo] || 0) + f.cantidad; });
+    });
+    var conocido = 0, uds = 0;
+    c.albaranes.forEach(function (n) { if (albs[n]) { conocido += albs[n].pesoConocido; uds += albs[n].udsSinPeso; } });
+    c.pesoUd = uds > 0 && c.peso != null ? Math.max(0, (c.peso - conocido) / uds) : 0;
+  }
+
+  function pesoAlb(n) {
+    var a = albs[n], c = cartaOrigen(n);
+    return a.pesoConocido + a.udsSinPeso * (c ? c.pesoUd : 0);
+  }
+
+  // Peso y artículos de la ruta: los de su carta, más lo que llega y menos lo que se va.
+  function pesoRuta(diario) {
+    var c = porDiario(diario), cam = cambios(diario), p = c.peso || 0, est = false;
+    cam.anadidos.forEach(function (n) { p += pesoAlb(n); if (albs[n].udsSinPeso) est = true; });
+    cam.quitados.forEach(function (n) { p -= pesoAlb(n); if (albs[n].udsSinPeso) est = true; });
+    return { peso: Math.max(0, p), original: c.peso, estimado: est, cambia: cam.anadidos.length + cam.quitados.length > 0 };
+  }
+  function articulosRuta(diario) {
+    var c = porDiario(diario), cam = cambios(diario), art = {};
+    Object.keys(c.art).forEach(function (k) { art[k] = c.art[k]; });
+    cam.anadidos.forEach(function (n) { Object.keys(albs[n].art).forEach(function (k) { art[k] = (art[k] || 0) + albs[n].art[k]; }); });
+    cam.quitados.forEach(function (n) { Object.keys(albs[n].art).forEach(function (k) { art[k] = (art[k] || 0) - albs[n].art[k]; }); });
+    Object.keys(art).forEach(function (k) { if (art[k] < 0.0005) delete art[k]; });
+    return art;
+  }
+
+  function porDiario(d) { return cartas.filter(function (c) { return c.diario === d; })[0]; }
+  function cartaOrigen(num) { return cartas.filter(function (c) { return c.albaranes.indexOf(num) >= 0; })[0] || null; }
+  function destino(num) { if (asig[num]) return asig[num]; var c = cartaOrigen(num); return c ? c.diario : null; }
+
+  function albsDe(diario) {
+    var c = porDiario(diario), out = [];
+    c.albaranes.forEach(function (n) { if (albs[n] && destino(n) === diario) out.push(n); });
+    Object.keys(asig).forEach(function (n) { if (albs[n] && asig[n] === diario && out.indexOf(n) < 0) out.push(n); });
+    // mismo orden que la relación de albaranes de la carta (por número), también para los movidos
+    return out.sort();
+  }
+  function sinAsignar() {
+    return Object.keys(albs).filter(function (n) { return !destino(n); });
+  }
+  function pendientes() {
+    var l = sinAsignar();
+    cartas.forEach(function (c) { if (c.sinRuta) l = l.concat(albsDe(c.diario)); });
+    return l;
+  }
+
+  // Clientes que ya sabemos a qué ruta van: se asignan solos.
+  function aplicaRecordados() {
+    var pend = pendientes();
+    pend.forEach(function (n) {
+      var r = memCliente[albs[n].cliente];
+      if (!r) return;
+      var c = cartas.filter(function (x) { return x.ruta === r && !x.sinRuta; })[0];
+      if (c) { asig[n] = c.diario; albs[n].auto = true; }
+    });
+  }
+
+  function mover(num, diario) {
+    var antes = destino(num), cOrig = antes ? porDiario(antes) : null;
+    if (!diario) { delete asig[num]; pinta(); return; }
+    var cDest = porDiario(diario);
+    asig[num] = diario;
+    albs[num].auto = false;
+    // Si venía de «sin ruta» (o de ninguna), se recuerda para el próximo día.
+    if ((!cOrig || cOrig.sinRuta) && cDest && !cDest.sinRuta) { memCliente[albs[num].cliente] = cDest.ruta; guarda('alb.clienteRuta', memCliente); }
+    pinta();
+  }
+
+  // ---- totales de una ruta ----
+  function totalesRuta(diario) {
+    var lista = albsDe(diario), por = {}, total = 0;
+    lista.forEach(function (n) {
+      var a = albs[n]; total += a.total5L;
+      Object.keys(a.por5L).forEach(function (k) {
+        var p = por[k] = por[k] || { codigo: k, desc: a.por5L[k].desc, cantidad: 0 };
+        p.cantidad += a.por5L[k].cantidad;
+      });
+    });
+    return { total: total, productos: Object.keys(por).map(function (k) { return por[k]; }), albs: lista };
+  }
+  function cambios(diario) {
+    var c = porDiario(diario), ahora = albsDe(diario);
+    return {
+      anadidos: ahora.filter(function (n) { return c.albaranes.indexOf(n) < 0; }),
+      quitados: c.albaranes.filter(function (n) { return albs[n] && ahora.indexOf(n) < 0; })
+    };
+  }
+
+  // ---- pantalla ----
+  function avisa(txt, tipo) { $('avisos').innerHTML = txt ? '<div class="msg ' + tipo + '">' + esc(txt) + '</div>' : ''; }
+
+  function pinta() {
+    var html = '', av = [];
+    var fechas = {};
+    Object.keys(albs).forEach(function (n) { var f = albs[n].fecha; if (f) fechas[f] = (fechas[f] || 0) + 1; });
+    var fa = Object.keys(fechas).sort(function (a, b) { return fechas[b] - fechas[a]; })[0];
+    if (fa) {
+      var m = fa.split('/'), man = new Date(); man.setDate(man.getDate() + 1);
+      var esMan = +m[0] === man.getDate() && +m[1] === man.getMonth() + 1 && +m[2] === man.getFullYear();
+      av.push('<div class="msg ' + (esMan ? 'ok' : 'warn') + '">Reparto para el ' + esc(fa) + (esMan ? ' (mañana). Las fechas, logos y datos de los documentos se respetan tal cual.' : ' — ojo: no es mañana. Las fechas se imprimen tal cual vienen en los documentos.') + '</div>');
+    }
+    // Albaranes sin carta de porte
+    var sc = sinAsignar();
+    if (sc.length) {
+      av.push('<div class="msg bad">' + sc.length + ' albarán(es) no aparecen en ninguna carta de porte. Elige su ruta abajo.</div>');
+      html += tarjetaSinCarta(sc);
+    }
+    // Albaranes citados en una carta pero no cargados
+    cartas.forEach(function (c) {
+      var faltan = c.albaranes.filter(function (n) { return !albs[n]; });
+      if (faltan.length) av.push('<div class="msg warn">La carta ' + esc(c.ruta) + ' cita ' + faltan.length + ' albarán(es) que no has cargado: ' + esc(faltan.join(', ')) + '</div>');
+    });
+    // Observaciones de los albaranes («Entregar antes de las 9»…), ruta por ruta
+    var obs = [];
+    orden.forEach(function (d) {
+      albsDe(d).forEach(function (n) { if (albs[n].observacion) obs.push('<li><b>' + esc(porDiario(d).ruta) + '</b> · ' + esc(busquedaDe(n)) + ': <b>' + esc(albs[n].observacion) + '</b></li>'); });
+    });
+    if (obs.length) av.push('<div class="msg obs">⚠ <b>' + obs.length + (obs.length > 1 ? ' observaciones' : ' observación') + ' en los albaranes</b> (salen también en la carta de porte):<ul>' + obs.join('') + '</ul></div>');
+    // Los de «sin ruta» se preguntan, pero no bloquean: SIN RUTA puede imprimirse como una ruta más.
+    var pend = pendientes().filter(function (n) { return albs[n] && destino(n); });
+    if (pend.length) av.push('<div class="msg warn">' + pend.length + ' albarán(es) en SIN RUTA: elige a qué ruta va cada uno (se recuerda para la próxima vez) o déjalos ahí y SIN RUTA se imprime como una ruta más, con su conductor y matrícula.</div>');
+
+    orden.forEach(function (d, i) { html += tarjeta(d, i); });
+    $('rutas').innerHTML = html;
+    $('avisos').innerHTML = av.join('');
+    $('pie').style.display = cartas.length || sc.length ? '' : 'none';
+    $('gen').disabled = sc.length > 0;
+    var incl = orden.filter(function (d) { return chofer[d].incluir && albsDe(d).length; }).length;
+    $('genInfo').textContent = sc.length ? 'Elige ruta para los albaranes sin carta de porte para poder generar.' : incl + ' ruta(s) a imprimir';
+    pintaRecordados();
+  }
+
+  function selectorRuta(num, actual) {
+    var o = '<option value="">' + (actual ? 'Mover a…' : '¿A qué ruta va?') + '</option>';
+    orden.forEach(function (d) {
+      var c = porDiario(d);
+      if (d !== actual) o += '<option value="' + esc(d) + '">' + esc(c.ruta || c.nombreArchivo) + '</option>';
+    });
+    return '<select data-mover="' + esc(num) + '">' + o + '</select>';
+  }
+
+  function tarjetaSinCarta(lista) {
+    var f = lista.map(function (n) {
+      var a = albs[n];
+      return '<tr class="pend"><td>' + esc(n) + '</td><td>' + esc(a.cliente) + '</td><td class="n">' + fmt(a.total5L) + '</td><td>' + selectorRuta(n, null) + '</td></tr>';
+    }).join('');
+    return '<div class="card"><h2>Sin carta de porte</h2><table><tr><th>Albarán</th><th>Cliente</th><th class="n">5L</th><th></th></tr>' + f + '</table></div>';
+  }
+
+  function tarjeta(d, i) {
+    var c = porDiario(d), t = totalesRuta(d), ch = chofer[d], cam = cambios(d);
+    var filas = t.albs.map(function (n) {
+      var a = albs[n], desde = cam.anadidos.indexOf(n) >= 0 ? cartaOrigen(n) : null;
+      var pend = c.sinRuta;
+      return '<tr class="' + (pend ? 'pend' : '') + '"><td>' + esc(n) + '</td><td>' + esc(a.cliente) +
+        (desde ? '<div class="moved">movido desde ' + esc(desde.ruta) + '</div>' : '') +
+        (a.auto ? '<div class="moved">ruta recordada</div>' : '') +
+        (a.observacion ? '<div class="tag">Obs.: ' + esc(a.observacion) + '</div>' : '') + '</td>' +
+        '<td class="n hide">' + esc(a.fecha || '') + '</td><td class="n">' + fmt(a.total5L) + '</td>' +
+        '<td class="n">' + (a.subrayar ? '<span class="mark" title="Se subraya">●</span>' : '') + '</td><td>' + selectorRuta(n, d) + '</td></tr>';
+    }).join('');
+    var quit = cam.quitados.map(function (n) { return '<div class="tag">Quitado: ' + esc(n) + ' ' + esc(albs[n].cliente) + ' (' + fmt(albs[n].total5L) + ')</div>'; }).join('');
+    var desglose = t.productos.map(function (p) { return fmt(p.cantidad) + ' ' + esc(p.desc); }).join(' · ');
+    return '<div class="card" data-d="' + esc(d) + '">' +
+      '<div class="row"><h2 class="grow">' + esc(c.ruta || c.nombreArchivo) + (c.sinRuta && t.albs.length ? ' <span class="mark">(elige ruta o imprímela como una más)</span>' : '') +
+      (function () { var n = t.albs.filter(function (x) { return albs[x].observacion; }).length; return n ? ' <span class="mark">⚠ ' + n + ' obs.</span>' : ''; })() + ' <span class="tag">' + esc(c.diario) + '</span></h2>' +
+      '<label class="tag"><input type="checkbox" data-incl="' + esc(d) + '"' + (ch.incluir ? ' checked' : '') + '> imprimir</label>' +
+      '<button class="mini" data-sube="' + i + '"' + (i === 0 ? ' disabled' : '') + '>↑</button>' +
+      '<button class="mini" data-baja="' + i + '"' + (i === orden.length - 1 ? ' disabled' : '') + '>↓</button></div>' +
+      '<div class="row" style="margin-top:8px"><input type="text" class="grow" placeholder="Conductor" list="dl-cond" data-cond="' + esc(d) + '" value="' + esc(ch.conductor) + '">' +
+      '<input type="text" placeholder="Matrícula" list="dl-mat" data-mat="' + esc(d) + '" value="' + esc(ch.matricula) + '"></div>' +
+      '<div class="tot">Total 5L: ' + fmt(t.total) + ' <span>' + (desglose ? '(' + desglose + ')' : '') + '</span></div>' +
+      (function () {
+        var p = pesoRuta(d);
+        if (p.original == null) return '';
+        return '<div class="tag">Peso: ' + (p.cambia ? fmtCarta(p.original, 2) + ' → <b>' + (p.estimado ? '≈ ' : '') + fmtCarta(p.peso, 2) + '</b>' : fmtCarta(p.original, 2)) + ' kg' +
+          (p.estimado ? ' (incluye unidades sin peso escrito, estimadas)' : '') + '</div>';
+      })() + quit +
+      (t.albs.length ? '<table><tr><th>Albarán</th><th>Cliente</th><th class="n hide">Fecha</th><th class="n">5L</th><th class="n">Subr.</th><th></th></tr>' + filas + '</table>' : '<div class="tag">Sin albaranes (no se imprimirá).</div>') + '</div>';
+  }
+
+  function pintaRecordados() {
+    var k = Object.keys(memCliente).sort();
+    $('recLista').innerHTML = k.length ? '<table>' + k.map(function (c) {
+      return '<tr><td>' + esc(c) + '</td><td>' + esc(memCliente[c]) + '</td><td class="n"><button class="mini" data-olvida="' + esc(c) + '">Olvidar</button></td></tr>';
+    }).join('') + '</table>' : '<div class="tag">Todavía no hay ninguno.</div>';
+    var cond = {}, mat = {};
+    Object.keys(memChofer).forEach(function (r) { if (memChofer[r].conductor) cond[memChofer[r].conductor] = 1; if (memChofer[r].matricula) mat[memChofer[r].matricula] = 1; });
+    var dl = $('dl-cond') || (function () { var a = document.createElement('datalist'); a.id = 'dl-cond'; document.body.appendChild(a); var b = document.createElement('datalist'); b.id = 'dl-mat'; document.body.appendChild(b); return a; })();
+    dl.innerHTML = Object.keys(cond).map(function (v) { return '<option value="' + esc(v) + '">'; }).join('');
+    $('dl-mat').innerHTML = Object.keys(mat).map(function (v) { return '<option value="' + esc(v) + '">'; }).join('');
+  }
+
+  // ---- eventos ----
+  $('drop').addEventListener('click', function () { $('file').click(); });
+  $('file').addEventListener('change', function (e) { cargar(Array.prototype.slice.call(e.target.files)); e.target.value = ''; });
+  ['dragover', 'dragenter'].forEach(function (ev) { $('drop').addEventListener(ev, function (e) { e.preventDefault(); $('drop').classList.add('over'); }); });
+  ['dragleave', 'drop'].forEach(function (ev) { $('drop').addEventListener(ev, function (e) { e.preventDefault(); $('drop').classList.remove('over'); }); });
+  $('drop').addEventListener('drop', function (e) { cargar(Array.prototype.slice.call(e.dataTransfer.files).filter(function (f) { return /pdf$/i.test(f.type) || /\.pdf$/i.test(f.name); })); });
+
+  $('rutas').addEventListener('change', function (e) {
+    var t = e.target;
+    if (t.dataset.mover != null) mover(t.dataset.mover, t.value);
+    else if (t.dataset.incl) { chofer[t.dataset.incl].incluir = t.checked; pinta(); }
+    else if (t.dataset.cond || t.dataset.mat) {
+      var d = t.dataset.cond || t.dataset.mat, ch = chofer[d];
+      if (t.dataset.cond) ch.conductor = t.value.trim(); else ch.matricula = t.value.trim().toUpperCase();
+      memChofer[porDiario(d).ruta] = { conductor: ch.conductor, matricula: ch.matricula };
+      guarda('alb.chofer', memChofer);
+      pintaRecordados();
+    }
+  });
+  $('rutas').addEventListener('click', function (e) {
+    var t = e.target;
+    if (t.dataset.sube != null) { var i = +t.dataset.sube; orden.splice(i - 1, 0, orden.splice(i, 1)[0]); pinta(); }
+    if (t.dataset.baja != null) { var j = +t.dataset.baja; orden.splice(j + 1, 0, orden.splice(j, 1)[0]); pinta(); }
+  });
+  $('recLista').addEventListener('click', function (e) {
+    if (e.target.dataset.olvida) { delete memCliente[e.target.dataset.olvida]; guarda('alb.clienteRuta', memCliente); pintaRecordados(); }
+  });
+  $('limpiar').addEventListener('click', function () { cartas = []; albs = {}; asig = {}; orden = []; chofer = {}; resultados = []; $('resultado').style.display = 'none'; avisa(''); pinta(); });
+
+  // ---- instalación como app (solo cuando se sirve desde una web; abierto como archivo no aplica) ----
+  // (dentro del APK no hace falta: la app ya va instalada)
+  if (location.protocol.indexOf('http') === 0 && 'serviceWorker' in navigator && !window.Capacitor) navigator.serviceWorker.register('sw.js').catch(function () {});
+  var promptInstalar = null;
+  window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); promptInstalar = e; $('instalar').style.display = ''; });
+  $('instalar').addEventListener('click', function () { if (promptInstalar) { promptInstalar.prompt(); promptInstalar = null; $('instalar').style.display = 'none'; } });
+  var standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  if (/iphone|ipad|ipod/i.test(navigator.userAgent) && !standalone && location.protocol.indexOf('http') === 0) $('ayudaIos').style.display = '';
+
+  // ---- generación del PDF ----
+  // Las páginas originales se copian tal cual (texto y gráficos, no fotos) y encima se escribe lo nuestro.
+  // Coordenadas en puntos con y desde arriba, como las lee core.js; aquí se pasan a las del PDF (y desde abajo).
+  var PL = window.PDFLib;
+  // todo lo que se escribe va como el documento: Helvetica (= Arial), negro, al tamaño de los textos de al lado
+  var TINTA = PL.rgb(0, 0, 0), NEGRO = PL.rgb(0, 0, 0), ROJO = PL.rgb(0.82, 0, 0), BLANCO = PL.rgb(1, 1, 1);
+
+  // Las fuentes estándar del PDF (Helvetica) solo tienen los caracteres de WinAnsi.
+  function limpio(s) { return String(s == null ? '' : s).replace(/[^\x20-\x7E -ÿ–—€]/g, '?'); }
+
+  function texto(g, s, x, y, tam, negrita, ancho, color, derecha) {
+    var f = negrita ? g.fb : g.f;
+    s = limpio(s);
+    if (ancho) while (s.length > 3 && f.widthOfTextAtSize(s, tam) > ancho) s = s.slice(0, -2);
+    if (derecha) x -= f.widthOfTextAtSize(s, tam);
+    g.page.drawText(s, { x: x, y: g.H - y, size: tam, font: f, color: color || TINTA });
+  }
+  function rect(g, x, y, w, h, color) { g.page.drawRectangle({ x: x, y: g.H - y - h, width: w, height: h, color: color, borderWidth: 0 }); }
+
+  // Copia la franja [arriba, abajo] de una página original a la altura «destino», encogida en vertical por «esc».
+  async function banda(g, pag, arriba, abajo, destino, esc) {
+    var emb = await g.embebida(pag), h = abajo - arriba, yb = g.H - (destino + h * esc);
+    g.page.pushOperators(PL.pushGraphicsState(), PL.rectangle(0, yb, g.W, h * esc), PL.clip(), PL.endPath());
+    g.page.drawPage(emb, { x: 0, y: yb - (emb.height - abajo) * esc, xScale: 1, yScale: esc });
+    g.page.pushOperators(PL.popGraphicsState());
+  }
+
+  function cajaTotales(g, diario) {
+    // recuadro vacío arriba a la izquierda de la carta de porte
+    var X = 31, Y = 106, W = 162, H = 91;
+    var t = totalesRuta(diario), ln = [];
+    ln.push({ s: 'ZUMOS 5L — TOTAL: ' + fmt(t.total), b: true });
+    t.productos.forEach(function (p) { ln.push({ s: fmt(p.cantidad) + '  ' + p.desc }); });
+    var fs = 9;
+    while (fs > 4.5 && ln.length * fs * 1.2 > H) fs -= 0.5;
+    ln.forEach(function (l, i) { texto(g, l.s, X, Y + fs + i * fs * 1.2, fs, l.b, W); });
+  }
+
+  // «Nombre de búsqueda» de un cliente tal como sale en la relación de albaranes de su carta de porte.
+  function busquedaDe(n) {
+    for (var i = 0; i < cartas.length; i++) for (var j = 0; j < cartas[i].paginas.length; j++) {
+      var tb = cartas[i].paginas[j].info.tabla, f = tb && tb.filas.filter(function (f) { return f.numero === n; })[0];
+      if (f && f.busqueda) return f.busqueda;
+    }
+    return albs[n].cliente || n;
+  }
+
+  // Observaciones de los albaranes de la ruta («Entregar antes de las 9»), en el hueco libre bajo «Agencia».
+  function observacionesCarta(g, d) {
+    var X = 272, Y = 224, W = 300, H = 44;
+    var ln = albsDe(d).filter(function (n) { return albs[n].observacion; }).map(function (n) { return { nombre: busquedaDe(n) + ': ', obs: albs[n].observacion }; });
+    if (!ln.length) return;
+    var fs = 8.5;
+    while (fs > 5.5 && (ln.length + 1) * fs * 1.2 > H) fs -= 0.5;
+    var caben = Math.floor(H / (fs * 1.2)) - 1;
+    texto(g, 'OBSERVACIONES:', X, Y + fs, fs, true, W);
+    ln.slice(0, caben).forEach(function (l, i) {
+      var y = Y + fs + (i + 1) * fs * 1.2, an = g.f.widthOfTextAtSize(limpio(l.nombre), fs) + fs * 0.3;
+      texto(g, l.nombre, X, y, fs, false, W);
+      texto(g, l.obs, X + an, y, fs, false, W - an);
+    });
+    if (ln.length > caben) texto(g, '... y ' + (ln.length - caben) + ' más (ver albaranes)', X, Y + fs + (caben + 1) * fs * 1.2, fs, false, W);
+  }
+
+  // Relación de albaranes de la carta: quita los que se fueron, mete los que llegaron (copiando su fila
+  // tal cual de la carta de origen, en orden de número) y subraya el «Nombre de búsqueda» de los clientes que cumplen la regla.
+  async function tablaCarta(g, pg, diario) {
+    var tb = pg.info.tabla;
+    if (!tb) return;
+    var lista = albsDe(diario), cam = cambios(diario);
+    var cambia = cam.anadidos.length || cam.quitados.length;
+
+    var bandas = [];
+    lista.forEach(function (n) {
+      var fila = tb.filas.filter(function (f) { return f.numero === n; })[0];
+      if (fila) return bandas.push({ n: n, src: pg, fila: fila });
+      var orig = cartaOrigen(n), pgo = orig && orig.paginas.filter(function (p) { return p.info.tabla && p.info.tabla.filas.some(function (f) { return f.numero === n; }); })[0];
+      if (pgo) bandas.push({ n: n, src: pgo, fila: pgo.info.tabla.filas.filter(function (f) { return f.numero === n; })[0] });
+      else bandas.push({ n: n, src: null, fila: { arriba: 0, abajo: 11.5, nombre: [] } });   // sin carta de origen: se escribe a mano
+    });
+
+    var alto = bandas.reduce(function (s, b) { return s + b.fila.abajo - b.fila.arriba; }, 0);
+    var fin = Math.max(tb.limite, tb.filas[tb.filas.length - 1].abajo);
+    var esc = cambia ? Math.min(1, (fin - tb.arriba) / alto) : 1;
+    if (cambia) rect(g, 0, tb.arriba, g.W, fin - tb.arriba, BLANCO);
+
+    var y = tb.arriba;
+    for (var i = 0; i < bandas.length; i++) {
+      var b = bandas[i], h = b.fila.abajo - b.fila.arriba, a = albs[b.n], nombre = b.fila.nombre;
+      if (cambia && b.src) await banda(g, b.src, b.fila.arriba, b.fila.abajo, y, esc);
+      else if (cambia) {
+        var base = y + 7.5 * esc, c = tb.cols;
+        [[a.numero, c.albaran], [a.fecha, c.fecha], [a.cuenta, c.cliente], [a.cliente, c.nombre], [a.cliente, c.busqueda]].forEach(function (v) { if (v[1] != null) texto(g, v[0] || '', v[1], base, 8, false, 0, NEGRO); });
+        nombre = [{ x0: c.busqueda, x1: c.busqueda + g.f.widthOfTextAtSize(limpio(a.cliente), 8), y: 7.5 }];
+      }
+      if (a.subrayar) nombre.forEach(function (r) { rect(g, r.x0, y + (r.y + 1.6) * esc, r.x1 - r.x0, 0.9, ROJO); });
+      // zumo de naranja 5L del cliente detrás de su nombre: «NOMBRE - 5 N / 2 HPP»
+      var ult = nombre.reduce(function (m, r) { return !m || r.y > m.y ? r : m; }, null);
+      var zumo = [a.naranjaN ? fmt(a.naranjaN) + ' N' : '', a.naranjaHPP ? fmt(a.naranjaHPP) + ' HPP' : ''].filter(Boolean).join(' / ');
+      if (ult && zumo) texto(g, ' - ' + zumo, ult.x1, y + ult.y * esc, 8 * Math.max(esc, 0.8), true, 0, NEGRO);
+      y += h * esc;
+    }
+  }
+
+  // Reparto de las filas de «Relación de artículos» de una ruta entre los huecos de sus páginas.
+  // Solo si la ruta cambió: cada artículo en orden de código, con su cantidad nueva; las filas se copian
+  // de la carta propia o, si el artículo es nuevo, de la carta de donde viene el albarán.
+  function planArticulos(diario) {
+    var c = porDiario(diario), cam = cambios(diario);
+    if (!cam.anadidos.length && !cam.quitados.length) return null;
+    var huecos = c.paginas.filter(function (p) { return p.info.articulos; });
+    if (!huecos.length) return null;
+    var art = articulosRuta(diario);
+    function busca(cartasDonde, cod) {
+      for (var i = 0; i < cartasDonde.length; i++) for (var j = 0; j < cartasDonde[i].paginas.length; j++) {
+        var p = cartasDonde[i].paginas[j], f = p.info.articulos && p.info.articulos.filas.filter(function (f) { return f.codigo === cod; })[0];
+        if (f) return { pg: p, fila: f };
+      }
+      return null;
+    }
+    var origenes = cam.anadidos.map(cartaOrigen).filter(Boolean);
+    var filas = Object.keys(art).sort().map(function (cod) {
+      var f = busca([c], cod) || busca(origenes, cod) || busca(cartas, cod);
+      var desc = '';
+      if (!f) Object.keys(albs).some(function (n) { return albs[n].lineas.some(function (l) { if (l.codigo === cod) { desc = l.desc; f = { unidad: l.unidad }; return true; } }); });
+      return { codigo: cod, cantidad: art[cod], src: f && f.pg ? f : null, alto: f && f.fila ? f.fila.abajo - f.fila.arriba : 11.5, desc: desc, unidad: f && f.fila ? f.fila.unidad : (f ? f.unidad : '') };
+    });
+    // llenar hueco a hueco; lo que no quepa en el último se comprime en vertical
+    var plan = huecos.map(function (p) { var tb = p.info.articulos; return { pg: p, arriba: tb.arriba, limite: tb.limite, fin: tb.filas.length ? tb.filas[tb.filas.length - 1].abajo : tb.arriba, filas: [], alto: 0 }; });
+    var h = 0;
+    filas.forEach(function (f) {
+      while (h < plan.length - 1 && plan[h].arriba + plan[h].alto + f.alto > plan[h].limite) h++;
+      plan[h].filas.push(f); plan[h].alto += f.alto;
+    });
+    plan.forEach(function (p) { p.esc = Math.min(1, (p.limite - p.arriba) / (p.alto || 1)); });
+    return plan;
+  }
+
+  async function articulosCarta(g, pg, plan) {
+    var p = plan && plan.filter(function (x) { return x.pg === pg; })[0];
+    if (!p) return;
+    rect(g, 0, p.arriba, g.W, Math.max(p.limite, p.fin) - p.arriba, BLANCO);
+    var y = p.arriba;
+    for (var i = 0; i < p.filas.length; i++) {
+      var f = p.filas[i], h = f.alto * p.esc, fila = f.src && f.src.fila;
+      if (fila) await banda(g, f.src.pg, fila.arriba, fila.abajo, y, p.esc);
+      var tam = fila && fila.cant ? fila.cant.h : 8, base = y + 7.5 * p.esc, der = fila && fila.cant ? fila.cant.x + fila.cant.w : 443.5;
+      if (!fila) {
+        texto(g, f.codigo, 34, base, tam, false, 0, NEGRO); texto(g, f.desc, 83, base, tam, false, 155, NEGRO);
+        texto(g, f.desc, 243, base, tam, false, 155, NEGRO); texto(g, f.unidad, 448, base, tam, false, 30, NEGRO);
+      }
+      if (!fila || Math.abs(fila.cantidad - f.cantidad) > 0.0005) {
+        rect(g, 385, y, der + 1 - 385, h, BLANCO);
+        texto(g, fmtCarta(f.cantidad, 3), der, base, tam, false, 0, NEGRO, true);
+      }
+      y += h;
+    }
+  }
+
+  function pesoCarta(g, pg, diario) {
+    var pc = pg.info.peso, p = pesoRuta(diario);
+    if (!pc || !p.cambia) return;
+    rect(g, pc.x - 1, pc.y - pc.h, pc.w + 4, pc.h + 3, BLANCO);
+    texto(g, fmtCarta(p.peso, 2), pc.x, pc.y, pc.h, false, 0, NEGRO);
+  }
+
+  // Nombre legible de la ruta para el archivo: «RutaA» → «Ruta A».
+  function nombreRuta(c) {
+    var n = c.ruta || c.nombreArchivo.replace(/\.pdf$/i, '');
+    return n.replace(/([a-zñáéíóú])([A-ZÁÉÍÓÚÑ])/g, '$1 $2');
+  }
+  function nombreArchivo(s) { return s.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim(); }
+
+  // Páginas de una ruta: las de su carta de porte y las de sus albaranes.
+  function hojasCarta(d) { return porDiario(d).paginas.map(function (p, i) { return { pag: p, d: d, carta: true, primera: i === 0 }; }); }
+  function hojasAlbaranes(d) {
+    var h = [];
+    albsDe(d).forEach(function (n) { albs[n].paginas.forEach(function (p) { h.push({ pag: p, d: d }); }); });
+    return h;
+  }
+  function fechaRuta(d) { return (albsDe(d).map(function (n) { return albs[n].fecha; }).filter(Boolean)[0] || '').replace(/\//g, '-'); }
+
+  // Crea un PDF con las hojas dadas (de una o varias rutas), con todo lo que se escribe encima.
+  async function generaPdf(hojas, titulo, lib, planes, avanza) {
+    var out = await PL.PDFDocument.create();
+    var g = { f: await out.embedFont(PL.StandardFonts.Helvetica), fb: await out.embedFont(PL.StandardFonts.HelveticaBold) };
+    // las páginas de cada PDF de origen se copian juntas (así comparten logos y fuentes)
+    var copias = new Map(), embebidas = new Map(), porDoc = new Map();
+    hojas.forEach(function (h) { if (!porDoc.has(h.pag.doc)) porDoc.set(h.pag.doc, []); porDoc.get(h.pag.doc).push(h.pag); });
+    for (var e of porDoc) {
+      var pags = await out.copyPages(await lib(e[0]), e[1].map(function (p) { return p.n - 1; }));
+      e[1].forEach(function (p, i) { copias.set(p, pags[i]); });
+    }
+    g.embebida = async function (pag) {
+      if (!embebidas.has(pag)) embebidas.set(pag, await out.embedPage((await lib(pag.doc)).getPage(pag.n - 1)));
+      return embebidas.get(pag);
+    };
+
+    for (var i = 0; i < hojas.length; i++) {
+      var hj = hojas[i], pg = hj.pag, d = hj.d, ch = chofer[d];
+      g.page = out.addPage(copias.get(pg)); g.W = g.page.getWidth(); g.H = g.page.getHeight();
+      // matrícula y conductor solo en la carta de porte
+      if (hj.carta) {
+        if (ch.matricula && pg.info.matricula) texto(g, ch.matricula, pg.info.matricula.x, pg.info.matricula.y, pg.info.matricula.h || 9);
+        if (!(d in planes)) planes[d] = planArticulos(d);
+        if (ch.conductor && pg.info.conductor) texto(g, ch.conductor, pg.info.conductor.x, pg.info.conductor.y, pg.info.conductor.h || 9);
+        if (hj.primera) { cajaTotales(g, d); observacionesCarta(g, d); }
+        await tablaCarta(g, pg, d);
+        await articulosCarta(g, pg, planes[d]);
+        pesoCarta(g, pg, d);
+      }
+      avanza();
+    }
+
+    out.setTitle(titulo);
+    // Al abrirlo, pide imprimir (Adobe Reader lo respeta; otros visores pueden ignorarlo).
+    out.catalog.set(PL.PDFName.of('OpenAction'), out.context.register(out.context.obj({
+      Type: 'Action', S: 'JavaScript', JS: PL.PDFString.of('this.print({bUI: true, bSilent: false, bShrinkToFit: true});')
+    })));
+    var bytes = await out.save();
+    return { file: new File([bytes], nombreArchivo(titulo) + '.pdf', { type: 'application/pdf' }), paginas: hojas.length };
+  }
+
+  // Qué PDF salen según el modo elegido. El número delante es el orden de impresión.
+  function encargos(rutas, modo) {
+    var lista = [];
+    if (modo === 'todo') {
+      var hojas = [];
+      rutas.forEach(function (d) { hojas = hojas.concat(hojasCarta(d), hojasAlbaranes(d)); });
+      var f = fechaRuta(rutas[0]);
+      lista.push({ hojas: hojas, titulo: 'Reparto - todas las rutas' + (f ? ' - ' + f : '') });
+      return lista;
+    }
+    rutas.forEach(function (d, r) {
+      var c = porDiario(d), ch = chofer[d], f = fechaRuta(d);
+      var cola = (ch.conductor ? ' - ' + ch.conductor : '') + (f ? ' - ' + f : '');
+      if (modo === 'junto') lista.push({ hojas: hojasCarta(d).concat(hojasAlbaranes(d)), titulo: (r + 1) + '. ' + nombreRuta(c) + cola });
+      else {
+        lista.push({ hojas: hojasCarta(d), titulo: (r + 1) + 'a. ' + nombreRuta(c) + ' - Carta de porte' + cola });
+        lista.push({ hojas: hojasAlbaranes(d), titulo: (r + 1) + 'b. ' + nombreRuta(c) + ' - Albaranes' + cola });
+      }
+    });
+    return lista;
+  }
+
+  async function genera() {
+    var rutas = orden.filter(function (d) { return chofer[d].incluir && albsDe(d).length; });
+    var lista = encargos(rutas, modoSalida()), conImg = $('conImg').checked;
+    var total = lista.reduce(function (s, x) { return s + x.hojas.length; }, 0) + (conImg ? rutas.length : 0), hechas = 0;
+    $('prog').style.display = 'block'; $('gen').disabled = true; $('resultado').style.display = 'none';
+    function avanza() { hechas++; $('prog').firstChild.style.width = (100 * hechas / total) + '%'; }
+    // cada PDF de origen se abre una sola vez para todos los archivos
+    var libs = new Map(), planes = {};
+    async function lib(doc) { if (!libs.has(doc)) libs.set(doc, await PL.PDFDocument.load(doc._bytes)); return libs.get(doc); }
+
+    resultados = [];
+    for (var i = 0; i < lista.length; i++) resultados.push(await generaPdf(lista[i].hojas, lista[i].titulo, lib, planes, avanza));
+    if (conImg) for (var r = 0; r < rutas.length; r++) resultados.push(await imagenCarta(rutas[r], r, lib, planes, avanza));
+    $('prog').style.display = 'none'; $('prog').firstChild.style.width = '0'; $('gen').disabled = false;
+    $('resLista').innerHTML = resultados.map(function (x, i) {
+      return '<tr><td>' + esc(x.file.name) + '</td><td class="n hide">' + (x.imagen ? 'imagen' : x.paginas + ' pág.') + ' · ' + (x.file.size / 1e6).toFixed(1) + ' MB</td>' +
+        '<td class="n"><button class="mini" data-bajar="' + i + '">Descargar</button></td></tr>';
+    }).join('');
+    $('descargar').textContent = resultados.length > 1 ? 'Descargar todos' : 'Descargar';
+    $('enviar').textContent = resultados.length > 1 ? 'Enviar todos…' : 'Enviar…';
+    $('enviar').style.display = puedeCompartir(resultados) ? '' : 'none';
+    $('resultado').style.display = '';
+    var nImg = resultados.filter(function (x) { return x.imagen; }).length;
+    var nObs = rutas.reduce(function (s, d) { return s + albsDe(d).filter(function (n) { return albs[n].observacion; }).length; }, 0);
+    if (nObs) setTimeout(function () { $('avisos').insertAdjacentHTML('beforeend', '<div class="msg obs">⚠ Ojo: ' + nObs + ' albarán(es) con observaciones. Van escritas en la carta de porte de su ruta.</div>'); }, 0);
+    avisa('Listo: ' + (resultados.length - nImg) + ' PDF' + (nImg ? ' y ' + nImg + ' imágenes' : '') + '. Descárgalos o envíalos' + '; cada PDF es un trabajo de impresión (la impresora grapa cada uno aparte).', 'ok');
+  }
+
+  // Imagen JPG de la 1ª hoja de la carta de porte de una ruta, tal como queda en el PDF (con todo lo escrito encima).
+  async function imagenCarta(d, r, lib, planes, avanza) {
+    var c = porDiario(d), ch = chofer[d], f = fechaRuta(d);
+    var titulo = (r + 1) + '. ' + nombreRuta(c) + ' - Carta de porte' + (ch.conductor ? ' - ' + ch.conductor : '') + (f ? ' - ' + f : '');
+    var pdf = await generaPdf(hojasCarta(d).slice(0, 1), titulo, lib, planes, function () {});
+    var doc = await pdfjsLib.getDocument({ data: new Uint8Array(await pdf.file.arrayBuffer()) }).promise;
+    var p = await doc.getPage(1), vp = p.getViewport({ scale: 2.5 });   // unos 180 ppp: se lee bien en el móvil
+    var cv = document.createElement('canvas'); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+    var ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+    await p.render({ canvasContext: ctx, viewport: vp }).promise;
+    var blob = await new Promise(function (ok) { cv.toBlob(ok, 'image/jpeg', 0.9); });
+    cv.width = cv.height = 0; doc.destroy();
+    avanza();
+    return { file: new File([blob], nombreArchivo(titulo) + '.jpg', { type: 'image/jpeg' }), paginas: 1, imagen: true };
+  }
+  (function () {
+    $('conImg').checked = lee('alb.conImg', true);
+    $('conImg').addEventListener('change', function () { guarda('alb.conImg', $('conImg').checked); });
+  })();
+
+  // Cómo salen los PDF (se recuerda): separados | junto | todo
+  function modoSalida() { var r = document.querySelector('input[name=modo]:checked'); return r ? r.value : 'separados'; }
+  (function () {
+    var m = lee('alb.modo', 'separados'), r = document.querySelector('input[name=modo][value="' + m + '"]');
+    if (r) r.checked = true;
+    document.querySelectorAll('input[name=modo]').forEach(function (x) { x.addEventListener('change', function () { guarda('alb.modo', modoSalida()); }); });
+  })();
+
+  var resultados = [];
+  // Dentro del APK (Capacitor) no hay descargas del navegador: se guarda con el sistema de archivos del móvil
+  // (carpeta Documentos/Reparto) y se comparte con el menú de compartir de Android.
+  var nativo = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  function puedeCompartir(lista) {
+    return nativo || !!(navigator.canShare && navigator.canShare({ files: lista.map(function (x) { return x.file; }) }));
+  }
+  function aBase64(file) {
+    return new Promise(function (ok, mal) { var r = new FileReader(); r.onload = function () { ok(String(r.result).split(',')[1]); }; r.onerror = mal; r.readAsDataURL(file); });
+  }
+  async function escribe(file, carpeta) {
+    var fs = window.Capacitor.Plugins.Filesystem;
+    var r = await fs.writeFile({ path: (carpeta === 'DOCUMENTS' ? 'Reparto/' : '') + file.name, data: await aBase64(file), directory: carpeta, recursive: true });
+    return r.uri;
+  }
+  async function baja(file) {
+    if (nativo) { await escribe(file, 'DOCUMENTS'); return; }
+    var url = URL.createObjectURL(file);
+    var a = document.createElement('a'); a.href = url; a.download = file.name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+  }
+  function fallo(e) { avisa('No se pudo: ' + (e && e.message || e), 'bad'); }
+  $('resLista').addEventListener('click', function (e) {
+    if (e.target.dataset.bajar == null) return;
+    var f = resultados[+e.target.dataset.bajar].file;
+    baja(f).then(function () { if (nativo) avisa('Guardado en Documentos/Reparto: ' + f.name, 'ok'); }).catch(fallo);
+  });
+  // el navegador puede preguntar una vez si se permite descargar varios archivos
+  $('descargar').addEventListener('click', async function () {
+    try {
+      for (var i = 0; i < resultados.length; i++) { await baja(resultados[i].file); if (!nativo) await new Promise(function (ok) { setTimeout(ok, 400); }); }
+      if (nativo) avisa('Guardados ' + resultados.length + ' archivos en Documentos/Reparto.', 'ok');
+    } catch (e) { fallo(e); }
+  });
+  $('enviar').addEventListener('click', async function () {
+    try {
+      if (nativo) {
+        var uris = [];
+        for (var i = 0; i < resultados.length; i++) uris.push(await escribe(resultados[i].file, 'CACHE'));
+        await window.Capacitor.Plugins.Share.share({ title: 'Reparto', files: uris });
+      } else await navigator.share({ files: resultados.map(function (x) { return x.file; }), title: 'Reparto' });
+    } catch (e) { if (!/cancel/i.test(e && e.message || '')) fallo(e); }
+  });
+  $('gen').addEventListener('click', function () { genera().catch(function (e) { avisa('Error al generar: ' + e.message, 'bad'); $('gen').disabled = false; }); });
+
+  pintaRecordados();
+})();
+</script>
+</body>
+</html>

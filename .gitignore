@@ -1,0 +1,14 @@
+# Dependencias y archivos generados (se rehacen con npm install / node build.js / apk.cmd)
+node_modules/
+dist/
+*.apk
+
+# Datos reales de clientes: NUNCA al repositorio
+muestras/
+
+# Salidas de las pruebas
+test/salida/
+test/*.txt
+
+# Python
+__pycache__/
