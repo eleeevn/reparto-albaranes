@@ -17,6 +17,7 @@ App de un solo archivo (`dist/Reparto.html`) para preparar la impresión diaria 
 
 ## APK de Android
 - `Reparto.apk` (Capacitor 6, id `app.reparto.albaranes`, firmado en modo depuración). Se instala pasándolo al móvil y permitiendo «instalar apps desconocidas».
+- Publicado como release en GitHub (privado): v1.0 → https://github.com/propietario/reparto-albaranes/releases. Nueva versión: `apk.cmd` y `gh release create vX.Y Reparto.apk`.
 - Regenerar tras cualquier cambio: `apk.cmd` (build.js + cap sync + gradle). Herramientas en `C:\herramientas` (JDK 17 + SDK 34).
 - Dentro del APK: «Descargar» guarda en Documentos/Reparto (plugin Filesystem) y «Enviar todos…» usa el menú de compartir de Android (plugin Share; en el APK se muestra siempre porque navigator.canShare no existe en el WebView).
 - Icono y pantalla de arranque: `python src/iconos_android.py` (si se regenera android/).
