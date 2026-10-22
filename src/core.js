@@ -106,10 +106,10 @@
   function tablaAlbaranes(t) {
     var filas = t.filter(function (a) { return a.x < 60 && RE_ALBARAN.test(a.s) && a.s.length < 12; }).sort(function (a, b) { return a.y - b.y; });
     if (!filas.length) return null;
-    var tope = t.filter(function (a) { return /^RELACI[ÓO]N DE ART|^EXPEDICI[ÓO]N|^Carga:/.test(a.s) && a.y > filas[0].y; }).sort(function (a, b) { return a.y - b.y; })[0];
+    var tope = t.filter(function (a) { return /^RELACI[ÓO]N DE ART|^EXPEDICI[ÓO]N|^Carga:?$/.test(a.s) && a.y > filas[0].y; }).sort(function (a, b) { return a.y - b.y; })[0];
     var limite = tope ? tope.y - 14 : filas[filas.length - 1].y + 20;
-    var cols = {};
-    t.forEach(function (a) { if (a.y < filas[0].y && a.y > filas[0].y - 30) cols[a.s] = a.x; });
+    var cols = {}, cab = filas[0].y;
+    t.forEach(function (a) { if (a.y < filas[0].y - 2 && a.y > filas[0].y - 30) { cols[a.s] = a.x; cab = Math.min(cab, a.y); } });
     var res = filas.map(function (f, i) {
       var arriba = f.y - 7.5, abajo;
       if (i + 1 < filas.length) abajo = filas[i + 1].y - 7.5;
@@ -132,7 +132,8 @@
       lineas.forEach(function (l) { delete l.partes; });
       return { numero: f.s, arriba: arriba, abajo: abajo, nombre: lineas, busqueda: busqueda };
     });
-    return { filas: res, arriba: res[0].arriba, limite: limite, cols: { cliente: cols['Cliente'], nombre: cols['Nombre'], busqueda: cols['Nombre de búsqueda'], fecha: cols['entrega'] || cols['Fecha de'], bultos: cols['Bultos'], albaran: filas[0].x } };
+    // cabArriba: donde empieza la cabecera de columnas (Albarán, Fecha de entrega…), para repetirla al pasar de página
+    return { filas: res, arriba: res[0].arriba, cabArriba: cab < filas[0].y ? cab - 8 : res[0].arriba, limite: limite, cols: { cliente: cols['Cliente'], nombre: cols['Nombre'], busqueda: cols['Nombre de búsqueda'], fecha: cols['entrega'] || cols['Fecha de'], bultos: cols['Bultos'], albaran: filas[0].x } };
   }
 
   // Tabla «RELACIÓN DE ARTÍCULOS» de una página: cada fila con su franja, código, cantidad (posición para
@@ -153,7 +154,10 @@
         unidad: uni ? uni.s : '', nombre: fila.filter(function (a) { return a.x > 70 && a.x < 240; }).map(function (a) { return a.s; }).join(' ')
       };
     });
-    return { filas: filas, arriba: hdr.y + 3.5, limite: limite };
+    // cabecera de columnas (Artículo… Unidad) y, si está en esta página, el título «RELACIÓN DE ARTÍCULOS» encima
+    var cab = t.filter(function (a) { return a.y <= hdr.y + 1 && a.y > hdr.y - 15 && a.x > 20; }).reduce(function (m, a) { return Math.min(m, a.y); }, hdr.y);
+    var tit = t.filter(function (a) { return /^RELACI[ÓO]N DE ART/.test(a.s) && a.y < hdr.y && a.y > hdr.y - 50; })[0];
+    return { filas: filas, arriba: hdr.y + 3.5, cabArriba: cab - 8, tituloArriba: tit ? tit.y - 11 : null, limite: limite };
   }
 
   // Campo «Peso» de la cabecera: valor y posición para reescribirlo.
@@ -164,15 +168,32 @@
     return v ? { valor: num(v.s), x: v.x, y: v.y, w: v.w, h: v.h } : null;
   }
 
+  // Hueco del cuerpo de la página (donde van las tablas): desde debajo de «Observaciones» hasta el recuadro
+  // de EXPEDICIÓN (página 1) o el de Carga (siguientes).
+  function cuerpo(t, alto) {
+    var obs = t.filter(function (a) { return /^Observaciones/.test(a.s); })[0];
+    var exp = t.filter(function (a) { return /^EXPEDICI[ÓO]N/.test(a.s); })[0];
+    var carga = t.filter(function (a) { return /^Carga:?$/.test(a.s); })[0];
+    return { inicio: obs ? obs.y + 8 : 230, fin: exp ? exp.y - 16 : carga ? carga.y - 58 : alto - 80 };
+  }
+
+  // «Página 1 de 2»: posición de los números para reescribirlos si cambia el número de páginas.
+  function campoPagina(t) {
+    var l = t.filter(function (a) { return a.s === 'Página'; })[0];
+    if (!l) return null;
+    var fila = t.filter(function (a) { return Math.abs(a.y - l.y) < 2 && a.x > l.x + 40 && a.x < l.x + 200 && /^(\d+|de)$/.test(a.s); }).sort(function (a, b) { return a.x - b.x; });
+    return fila.length === 3 && fila[1].s === 'de' ? fila.map(function (a) { return { s: a.s, x: a.x, y: a.y, w: a.w, h: a.h }; }) : null;
+  }
+
   // Carta de porte: diario, observaciones, albaranes en su orden y posición de los campos a rellenar.
   function parseCarta(items, alto) {
     var t = normaliza(items, alto);
     var texto = t.map(function (a) { return a.s; }).join(' ');
     var dm = texto.match(/\bDEX\d+\b/);
-    var om = texto.match(/Observaciones[\s.:]*([^\s.:].*?)\s+RELACI[ÓO]N/);
+    var om = texto.match(/Observaciones[\s.:]*([^\s.:].*?)\s+(?:RELACI[ÓO]N|Albar[áa]n\b|Art[íi]culo\b)/);
     var albaranes = [];
     (texto.match(new RegExp(RE_ALBARAN.source, 'g')) || []).forEach(function (n) { if (albaranes.indexOf(n) < 0) albaranes.push(n); });
-    return { diario: dm ? dm[0] : null, ruta: om ? om[1] : null, albaranes: albaranes, matricula: campo(t, 'Matr'), conductor: campo(t, 'Conductor'), tabla: tablaAlbaranes(t), articulos: tablaArticulos(t), peso: campoPeso(t) };
+    return { diario: dm ? dm[0] : null, ruta: om ? om[1] : null, albaranes: albaranes, matricula: campo(t, 'Matr'), conductor: campo(t, 'Conductor'), tabla: tablaAlbaranes(t), articulos: tablaArticulos(t), peso: campoPeso(t), cuerpo: cuerpo(t, alto), pagina: campoPagina(t) };
   }
 
   root.AlbCore = { parseAlbaran: parseAlbaran, parseCarta: parseCarta, normaliza: normaliza, pesoUnidad: pesoUnidad };

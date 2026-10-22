@@ -12,3 +12,4 @@ test/*.txt
 
 # Python
 __pycache__/
+test/salida_varias/

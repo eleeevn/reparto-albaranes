@@ -30,7 +30,8 @@ App de un solo archivo (`dist/Reparto.html`) para preparar la impresión diaria 
 - No hay rutas fijas: el nombre sale de «Observaciones» de cada C.P. y los albaranes se emparejan por número. Cualquier ruta nueva con el mismo formato vale.
 - Ruta de cada albarán: la C.P. que lo cita (Relación de albaranes), salvo que se mueva a mano.
 - Total 5L: suma de las líneas con unidad `5Litros`, por albarán y por ruta (desglose por producto). Va en el recuadro superior izquierdo de la C.P.
-- Cambios de ruta: la «Relación de albaranes» de la C.P. se rehace. Las filas que se van desaparecen y las que llegan se copian tal cual (imagen de la fila) de la C.P. de origen, todo ordenado por número de albarán. Si no cabe, la tabla se comprime en vertical.
+- Cartas de porte de varias hojas: la relación de albaranes (y la de artículos) puede seguir en la 2ª hoja o más; se juntan los albaranes de todas las hojas de la misma carta (mismo Nº de diario).
+- Cambios de ruta: el cuerpo de la C.P. (relación de albaranes y luego de artículos) se recoloca como texto que corre de página en página, SIN encoger: filas copiadas tal cual (de la C.P. propia o de la de origen), en orden de número/código; al llenarse una hoja sigue en la siguiente repitiendo la cabecera de columnas; si no cabe, se añaden hojas (copias de la última) y se reescribe «Página X de N». Ruta sin cambios: la C.P. se deja igual y solo se marcan las filas en la hoja donde están.
 - Subrayado: una raya roja bajo el «Nombre de búsqueda» del cliente en la Relación de albaranes de la C.P. (no en el albarán), si su albarán lleva algún producto que no sea de 5L, o ninguno de 5L.
 - Zumo por cliente: en la Relación de albaranes de la C.P., detrás del «Nombre de búsqueda» va el zumo de NARANJA 5L del albarán, normal y HPP por separado: « - 10 N», « - 3 HPP», « - 5 N / 2 HPP». Limón y pomelo no cuentan aquí (sí en el total 5L del recuadro). Sin naranja 5L, nada.
 - Observaciones: si un albarán trae un texto suelto encima de la tabla («Entregar antes de las 9», «ENTREGAR POR LA MAÑANA»), en la 1ª hoja de la C.P. se escribe bajo «Agencia»: «OBSERVACIONES:» y una línea por cliente «NOMBRE DE BÚSQUEDA: observación». Viaja con el cliente si cambia de ruta. También se ve en la pantalla (Obs.).
@@ -38,12 +39,12 @@ App de un solo archivo (`dist/Reparto.html`) para preparar la impresión diaria 
 - Tipografía: todo lo que escribe la app va como el documento (Helvetica = Arial, negro, al tamaño de los textos de al lado); solo el subrayado es rojo. Matrícula y conductor SOLO en la carta de porte (no en los albaranes).
 - Avisos: la pantalla muestra arriba todas las observaciones (ruta · cliente: texto), una marca «⚠ N obs.» en cada ruta, y un recordatorio al generar.
 - Los PDF originales no se alteran: solo se escribe encima (matrícula, conductor, recuadro de totales, subrayado, relación de albaranes).
-- Al mover albaranes, la «Relación de artículos» de la C.P. se rehace: cantidades = C.P. original + albaranes que llegan − los que se van (todos los artículos, no solo el zumo). Orden por código; las filas a cero desaparecen; las nuevas se copian de la C.P. de origen y la cantidad se reescribe encima. Las filas se reparten entre el hueco de la página 1 (hasta EXPEDICIÓN) y el de la 2 (hasta el recuadro de Carga).
+- Al mover albaranes, la «Relación de artículos» de la C.P. se rehace: cantidades = C.P. original + albaranes que llegan − los que se van (todos los artículos, no solo el zumo). Orden por código; las filas a cero desaparecen; las nuevas se copian de la C.P. de origen y la cantidad se reescribe encima. 
 - Peso de la C.P. = original + peso de los que llegan − los que se van. El peso de un albarán sale de sus líneas (kg., NLitros, 750ml, Bja250 = 250 g, Bolsa5kg…). Las unidades sin peso escrito («ud.», «Bdja», «Manojo») se estiman con el peso medio de esas unidades en su C.P. de origen. Comprobado: las tablas de artículos de las 5 C.P. de muestra coinciden exactamente con la suma de sus albaranes.
 
 ## Desarrollo
 - `src/core.js` lectura de PDF (columnas por coordenadas), `src/app.html` pantalla y generación.
 - `node build.js` → `dist/` (mete pdf.js 3.11.174 para leer y pdf-lib 1.17.1 para crear el PDF).
 - El PDF final copia las páginas originales (vectoriales) con pdf-lib y escribe encima; las filas movidas se copian como franja recortada de la página de origen (embedPage + clip).
-- `node test/leer.mjs` (lectura) y `node test/e2e.js` (prueba completa con Edge oculto, salida en `test/salida`) y `python test/paginas.py` (pasa el PDF a imágenes).
+- `node test/leer.mjs` (lectura) y `node test/e2e_varias.js` (todo a RutaB: carta de 4 hojas), `node test/cuerpo.js` (lo que se lee de cada hoja de C.P.), `node test/e2e.js` (prueba completa con Edge oculto, salida en `test/salida`) y `python test/paginas.py` (pasa el PDF a imágenes).
 - Muestras reales en `muestras/` (solo en local: con datos de clientes, excluidas del repositorio por .gitignore).

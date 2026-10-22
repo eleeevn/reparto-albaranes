@@ -147,7 +147,9 @@
             c = { diario: ci.diario, ruta: ci.ruta, albaranes: ci.albaranes, paginas: [], nombreArchivo: files[f].name };
             cartas.push(c);
           }
-          if (ci.albaranes.length > c.albaranes.length) c.albaranes = ci.albaranes;
+          // la relación de albaranes puede seguir en la 2ª hoja (o más): se juntan los de todas las hojas, en orden
+          ci.albaranes.forEach(function (n) { if (c.albaranes.indexOf(n) < 0) c.albaranes.push(n); });
+          if (!c.ruta && ci.ruta) c.ruta = ci.ruta;
           c.paginas.push({ doc: doc, n: n, info: ci });
           ultimaCarta = c; ultimoAlb = null;
         } else {
@@ -511,98 +513,137 @@
     if (ln.length > caben) texto(g, '... y ' + (ln.length - caben) + ' más (ver albaranes)', X, Y + fs + (caben + 1) * fs * 1.2, fs, false, W);
   }
 
-  // Relación de albaranes de la carta: quita los que se fueron, mete los que llegaron (copiando su fila
-  // tal cual de la carta de origen, en orden de número) y subraya el «Nombre de búsqueda» de los clientes que cumplen la regla.
-  async function tablaCarta(g, pg, diario) {
+  // Subrayado y zumo de un cliente en su fila de la relación de albaranes (fila copiada o original en y).
+  function marcasCliente(g, a, nombre, y) {
+    if (a.subrayar) nombre.forEach(function (r) { rect(g, r.x0, y + r.y + 1.6, r.x1 - r.x0, 0.9, ROJO); });
+    // zumo de naranja 5L del cliente detrás de su nombre: «NOMBRE - 5 N / 2 HPP»
+    var ult = nombre.reduce(function (m, r) { return !m || r.y > m.y ? r : m; }, null);
+    var zumo = [a.naranjaN ? fmt(a.naranjaN) + ' N' : '', a.naranjaHPP ? fmt(a.naranjaHPP) + ' HPP' : ''].filter(Boolean).join(' / ');
+    if (ult && zumo) texto(g, ' - ' + zumo, ult.x1, y + ult.y, 8, true, 0, NEGRO);
+  }
+
+  // Ruta sin cambios: la carta se deja como está y solo se marcan las filas de esta página.
+  function anotaFilas(g, pg) {
     var tb = pg.info.tabla;
     if (!tb) return;
-    var lista = albsDe(diario), cam = cambios(diario);
-    var cambia = cam.anadidos.length || cam.quitados.length;
-
-    var bandas = [];
-    lista.forEach(function (n) {
-      var fila = tb.filas.filter(function (f) { return f.numero === n; })[0];
-      if (fila) return bandas.push({ n: n, src: pg, fila: fila });
-      var orig = cartaOrigen(n), pgo = orig && orig.paginas.filter(function (p) { return p.info.tabla && p.info.tabla.filas.some(function (f) { return f.numero === n; }); })[0];
-      if (pgo) bandas.push({ n: n, src: pgo, fila: pgo.info.tabla.filas.filter(function (f) { return f.numero === n; })[0] });
-      else bandas.push({ n: n, src: null, fila: { arriba: 0, abajo: 11.5, nombre: [] } });   // sin carta de origen: se escribe a mano
-    });
-
-    var alto = bandas.reduce(function (s, b) { return s + b.fila.abajo - b.fila.arriba; }, 0);
-    var fin = Math.max(tb.limite, tb.filas[tb.filas.length - 1].abajo);
-    var esc = cambia ? Math.min(1, (fin - tb.arriba) / alto) : 1;
-    if (cambia) rect(g, 0, tb.arriba, g.W, fin - tb.arriba, BLANCO);
-
-    var y = tb.arriba;
-    for (var i = 0; i < bandas.length; i++) {
-      var b = bandas[i], h = b.fila.abajo - b.fila.arriba, a = albs[b.n], nombre = b.fila.nombre;
-      if (cambia && b.src) await banda(g, b.src, b.fila.arriba, b.fila.abajo, y, esc);
-      else if (cambia) {
-        var base = y + 7.5 * esc, c = tb.cols;
-        [[a.numero, c.albaran], [a.fecha, c.fecha], [a.cuenta, c.cliente], [a.cliente, c.nombre], [a.cliente, c.busqueda]].forEach(function (v) { if (v[1] != null) texto(g, v[0] || '', v[1], base, 8, false, 0, NEGRO); });
-        nombre = [{ x0: c.busqueda, x1: c.busqueda + g.f.widthOfTextAtSize(limpio(a.cliente), 8), y: 7.5 }];
-      }
-      if (a.subrayar) nombre.forEach(function (r) { rect(g, r.x0, y + (r.y + 1.6) * esc, r.x1 - r.x0, 0.9, ROJO); });
-      // zumo de naranja 5L del cliente detrás de su nombre: «NOMBRE - 5 N / 2 HPP»
-      var ult = nombre.reduce(function (m, r) { return !m || r.y > m.y ? r : m; }, null);
-      var zumo = [a.naranjaN ? fmt(a.naranjaN) + ' N' : '', a.naranjaHPP ? fmt(a.naranjaHPP) + ' HPP' : ''].filter(Boolean).join(' / ');
-      if (ult && zumo) texto(g, ' - ' + zumo, ult.x1, y + ult.y * esc, 8 * Math.max(esc, 0.8), true, 0, NEGRO);
-      y += h * esc;
-    }
+    tb.filas.forEach(function (f) { if (albs[f.numero]) marcasCliente(g, albs[f.numero], f.nombre, f.arriba); });
   }
 
-  // Reparto de las filas de «Relación de artículos» de una ruta entre los huecos de sus páginas.
-  // Solo si la ruta cambió: cada artículo en orden de código, con su cantidad nueva; las filas se copian
-  // de la carta propia o, si el artículo es nuevo, de la carta de donde viene el albarán.
-  function planArticulos(diario) {
-    var c = porDiario(diario), cam = cambios(diario);
-    if (!cam.anadidos.length && !cam.quitados.length) return null;
-    var huecos = c.paginas.filter(function (p) { return p.info.articulos; });
-    if (!huecos.length) return null;
-    var art = articulosRuta(diario);
-    function busca(cartasDonde, cod) {
-      for (var i = 0; i < cartasDonde.length; i++) for (var j = 0; j < cartasDonde[i].paginas.length; j++) {
-        var p = cartasDonde[i].paginas[j], f = p.info.articulos && p.info.articulos.filas.filter(function (f) { return f.codigo === cod; })[0];
-        if (f) return { pg: p, fila: f };
-      }
-      return null;
+  // Busca la fila de un albarán (o de un artículo) en las cartas: primero en la propia, luego en las de origen, luego en todas.
+  function buscaFila(listas, tipo, clave) {
+    for (var l = 0; l < listas.length; l++) for (var i = 0; i < listas[l].length; i++) for (var j = 0; j < listas[l][i].paginas.length; j++) {
+      var p = listas[l][i].paginas[j], tb = tipo === 'alb' ? p.info.tabla : p.info.articulos;
+      var f = tb && tb.filas.filter(function (f) { return (tipo === 'alb' ? f.numero : f.codigo) === clave; })[0];
+      if (f) return { pg: p, fila: f, arriba: f.arriba, abajo: f.abajo };
     }
+    return null;
+  }
+
+  // Ruta con cambios: el cuerpo de la carta (relación de albaranes y después la de artículos) se recoloca como un
+  // texto que corre de página en página, sin encoger nada. Cuando una página se llena, sigue en la siguiente con la
+  // cabecera de columnas repetida; si no caben en las páginas originales, se añaden páginas (copias de la última).
+  function planCarta(d) {
+    var c = porDiario(d), cam = cambios(d), art = articulosRuta(d);
     var origenes = cam.anadidos.map(cartaOrigen).filter(Boolean);
-    var filas = Object.keys(art).sort().map(function (cod) {
-      var f = busca([c], cod) || busca(origenes, cod) || busca(cartas, cod);
-      var desc = '';
-      if (!f) Object.keys(albs).some(function (n) { return albs[n].lineas.some(function (l) { if (l.codigo === cod) { desc = l.desc; f = { unidad: l.unidad }; return true; } }); });
-      return { codigo: cod, cantidad: art[cod], src: f && f.pg ? f : null, alto: f && f.fila ? f.fila.abajo - f.fila.arriba : 11.5, desc: desc, unidad: f && f.fila ? f.fila.unidad : (f ? f.unidad : '') };
+    var p1 = c.paginas[0].info;
+    var pgAlb = c.paginas.filter(function (p) { return p.info.tabla; })[0];
+    var pgArt = c.paginas.filter(function (p) { return p.info.articulos; })[0];
+    var pgTit = c.paginas.filter(function (p) { return p.info.articulos && p.info.articulos.tituloArriba != null; })[0];
+    var cabAlb = pgAlb && { tipo: 'cab', pg: pgAlb, arriba: pgAlb.info.tabla.cabArriba, abajo: pgAlb.info.tabla.arriba };
+    var cabArt = pgArt && { tipo: 'cab', pg: pgArt, arriba: pgArt.info.articulos.cabArriba, abajo: pgArt.info.articulos.arriba };
+    var titArt = pgTit ? { tipo: 'tit', pg: pgTit, arriba: pgTit.info.articulos.tituloArriba, abajo: pgTit.info.articulos.arriba } : cabArt && Object.assign({}, cabArt, { tipo: 'tit' });
+
+    var bandas = albsDe(d).map(function (n) {
+      var f = buscaFila([[c], origenes, cartas], 'alb', n);
+      return Object.assign({ tipo: 'alb', n: n }, f || { pg: null, arriba: 0, abajo: 11.5 });
     });
-    // llenar hueco a hueco; lo que no quepa en el último se comprime en vertical
-    var plan = huecos.map(function (p) { var tb = p.info.articulos; return { pg: p, arriba: tb.arriba, limite: tb.limite, fin: tb.filas.length ? tb.filas[tb.filas.length - 1].abajo : tb.arriba, filas: [], alto: 0 }; });
-    var h = 0;
-    filas.forEach(function (f) {
-      while (h < plan.length - 1 && plan[h].arriba + plan[h].alto + f.alto > plan[h].limite) h++;
-      plan[h].filas.push(f); plan[h].alto += f.alto;
+    var cods = Object.keys(art).sort();
+    if (cods.length && titArt) bandas.push(titArt);
+    cods.forEach(function (cod) {
+      var f = buscaFila([[c], origenes, cartas], 'art', cod), desc = '', unidad = '';
+      if (!f) Object.keys(albs).some(function (n) { return albs[n].lineas.some(function (l) { if (l.codigo === cod) { desc = l.desc; unidad = l.unidad; return true; } }); });
+      bandas.push(Object.assign({ tipo: 'art', cod: cod, cantidad: art[cod], desc: desc, unidad: unidad }, f || { pg: null, arriba: 0, abajo: 11.5 }));
     });
-    plan.forEach(function (p) { p.esc = Math.min(1, (p.limite - p.arriba) / (p.alto || 1)); });
-    return plan;
+
+    function hueco(i) {
+      var tpl = c.paginas[Math.min(i, c.paginas.length - 1)], inf = tpl.info, cu = inf.cuerpo;
+      // página 1: desde la primera fila de albaranes (su título y cabecera se quedan); siguientes: todo el cuerpo
+      var ini = i === 0 && p1.tabla ? p1.tabla.arriba : Math.min.apply(null, [cu.inicio].concat(
+        [inf.tabla && inf.tabla.cabArriba, inf.articulos && inf.articulos.cabArriba, inf.articulos && inf.articulos.tituloArriba].filter(function (v) { return v != null; })));
+      return { tpl: tpl, ini: ini, fin: cu.fin, items: [] };
+    }
+    var alto = function (b) { return b.abajo - b.arriba; };
+    var paginas = [], pag = hueco(0), y = pag.ini;
+    for (var b = 0; b < bandas.length; b++) {
+      var bd = bandas[b], extra = bd.tipo === 'tit' && b + 1 < bandas.length ? alto(bandas[b + 1]) : 0;   // el título no se queda solo al pie
+      if (y + alto(bd) + extra > pag.fin && pag.items.length) {
+        paginas.push(pag); pag = hueco(paginas.length); y = pag.ini;
+        var cab = bd.tipo === 'alb' ? cabAlb : bd.tipo === 'art' ? cabArt : null;
+        if (cab) { pag.items.push({ b: cab, y: y }); y += alto(cab); }
+      }
+      pag.items.push({ b: bd, y: y }); y += alto(bd);
+    }
+    paginas.push(pag);
+    return paginas;
   }
 
-  async function articulosCarta(g, pg, plan) {
-    var p = plan && plan.filter(function (x) { return x.pg === pg; })[0];
+  // Dibuja una página del plan: borra el cuerpo original y coloca las franjas en su sitio.
+  async function pintaPlan(g, pl, cols) {
+    rect(g, 0, pl.ini, g.W, pl.fin - pl.ini, BLANCO);
+    for (var i = 0; i < pl.items.length; i++) {
+      var it = pl.items[i], b = it.b, base = it.y + 7.5;
+      if (b.pg) await banda(g, b.pg, b.arriba, b.abajo, it.y, 1);
+      if (b.tipo === 'alb') {
+        var a = albs[b.n], nombre = b.fila ? b.fila.nombre : [];
+        if (!b.pg && cols) {   // sin carta de origen: la fila se escribe a mano
+          [[a.numero, cols.albaran], [a.fecha, cols.fecha], [a.cuenta, cols.cliente], [a.cliente, cols.nombre], [a.cliente, cols.busqueda]].forEach(function (v) { if (v[1] != null) texto(g, v[0] || '', v[1], base, 8, false, 0, NEGRO); });
+          nombre = [{ x0: cols.busqueda, x1: cols.busqueda + g.f.widthOfTextAtSize(limpio(a.cliente), 8), y: 7.5 }];
+        }
+        marcasCliente(g, a, nombre, it.y);
+      }
+      if (b.tipo === 'art') {
+        var f = b.fila, tam = f && f.cant ? f.cant.h : 8, der = f && f.cant ? f.cant.x + f.cant.w : 443.5;
+        if (!f) {
+          texto(g, b.cod, 34, base, tam, false, 0, NEGRO); texto(g, b.desc, 83, base, tam, false, 155, NEGRO);
+          texto(g, b.desc, 243, base, tam, false, 155, NEGRO); texto(g, b.unidad, 448, base, tam, false, 30, NEGRO);
+        }
+        if (!f || Math.abs(f.cantidad - b.cantidad) > 0.0005) {
+          rect(g, 385, it.y, der + 1 - 385, b.abajo - b.arriba, BLANCO);
+          texto(g, fmtCarta(b.cantidad, 3), der, base, tam, false, 0, NEGRO, true);
+        }
+      }
+    }
+  }
+
+  // «Página X de N» cuando cambia el número de páginas de la carta.
+  function numeroPagina(g, info, x, n) {
+    var p = info.pagina;
     if (!p) return;
-    rect(g, 0, p.arriba, g.W, Math.max(p.limite, p.fin) - p.arriba, BLANCO);
-    var y = p.arriba;
-    for (var i = 0; i < p.filas.length; i++) {
-      var f = p.filas[i], h = f.alto * p.esc, fila = f.src && f.src.fila;
-      if (fila) await banda(g, f.src.pg, fila.arriba, fila.abajo, y, p.esc);
-      var tam = fila && fila.cant ? fila.cant.h : 8, base = y + 7.5 * p.esc, der = fila && fila.cant ? fila.cant.x + fila.cant.w : 443.5;
-      if (!fila) {
-        texto(g, f.codigo, 34, base, tam, false, 0, NEGRO); texto(g, f.desc, 83, base, tam, false, 155, NEGRO);
-        texto(g, f.desc, 243, base, tam, false, 155, NEGRO); texto(g, f.unidad, 448, base, tam, false, 30, NEGRO);
-      }
-      if (!fila || Math.abs(fila.cantidad - f.cantidad) > 0.0005) {
-        rect(g, 385, y, der + 1 - 385, h, BLANCO);
-        texto(g, fmtCarta(f.cantidad, 3), der, base, tam, false, 0, NEGRO, true);
-      }
-      y += h;
+    var izq = p[0].x - 1, der = p[2].x + p[2].w + 6;
+    rect(g, izq, p[0].y - p[0].h, der - izq, p[0].h + 3, BLANCO);
+    texto(g, String(x), p[0].x, p[0].y, p[0].h, false, 0, NEGRO);
+    texto(g, 'de', p[1].x, p[1].y, p[1].h, false, 0, NEGRO);
+    texto(g, String(n), p[2].x, p[2].y, p[2].h, false, 0, NEGRO);
+  }
+
+  // Todas las hojas de la carta de porte de una ruta, con lo que se escribe encima.
+  async function emiteCarta(g, out, d, copia) {
+    var c = porDiario(d), ch = chofer[d], cam = cambios(d);
+    var plan = cam.anadidos.length || cam.quitados.length ? planCarta(d) : null;
+    var n = plan ? plan.length : c.paginas.length, cols = c.paginas[0].info.tabla && c.paginas[0].info.tabla.cols;
+    for (var i = 0; i < n; i++) {
+      var tpl = plan ? plan[i].tpl : c.paginas[i], info = tpl.info;
+      // las páginas de más son copias nuevas de la última página de la carta
+      g.page = out.addPage(i < c.paginas.length ? await copia(c.paginas[i]) : await copia(tpl, true));
+      g.W = g.page.getWidth(); g.H = g.page.getHeight();
+      if (ch.matricula && info.matricula) texto(g, ch.matricula, info.matricula.x, info.matricula.y, info.matricula.h || 9);
+      if (ch.conductor && info.conductor) texto(g, ch.conductor, info.conductor.x, info.conductor.y, info.conductor.h || 9);
+      if (i === 0) { cajaTotales(g, d); observacionesCarta(g, d); }
+      pesoCarta(g, tpl, d);
+      if (plan) {
+        if (n !== c.paginas.length) numeroPagina(g, info, i + 1, n);
+        await pintaPlan(g, plan[i], cols);
+      } else anotaFilas(g, tpl);
     }
   }
 
@@ -645,19 +686,19 @@
       return embebidas.get(pag);
     };
 
+    // copia de una página original (nueva = otra copia más, para las páginas que se añaden a una carta)
+    async function copia(pag, nueva) {
+      if (!nueva && copias.has(pag)) return copias.get(pag);
+      var p = (await out.copyPages(await lib(pag.doc), [pag.n - 1]))[0];
+      if (!nueva) copias.set(pag, p);
+      return p;
+    }
+
     for (var i = 0; i < hojas.length; i++) {
-      var hj = hojas[i], pg = hj.pag, d = hj.d, ch = chofer[d];
-      g.page = out.addPage(copias.get(pg)); g.W = g.page.getWidth(); g.H = g.page.getHeight();
-      // matrícula y conductor solo en la carta de porte
-      if (hj.carta) {
-        if (ch.matricula && pg.info.matricula) texto(g, ch.matricula, pg.info.matricula.x, pg.info.matricula.y, pg.info.matricula.h || 9);
-        if (!(d in planes)) planes[d] = planArticulos(d);
-        if (ch.conductor && pg.info.conductor) texto(g, ch.conductor, pg.info.conductor.x, pg.info.conductor.y, pg.info.conductor.h || 9);
-        if (hj.primera) { cajaTotales(g, d); observacionesCarta(g, d); }
-        await tablaCarta(g, pg, d);
-        await articulosCarta(g, pg, planes[d]);
-        pesoCarta(g, pg, d);
-      }
+      var hj = hojas[i];
+      // la carta de porte se emite entera de una vez (puede ganar o perder páginas); matrícula y conductor solo ahí
+      if (hj.carta) { if (hj.primera) await emiteCarta(g, out, hj.d, copia); avanza(); continue; }
+      g.page = out.addPage(await copia(hj.pag)); g.W = g.page.getWidth(); g.H = g.page.getHeight();
       avanza();
     }
 
@@ -667,7 +708,7 @@
       Type: 'Action', S: 'JavaScript', JS: PL.PDFString.of('this.print({bUI: true, bSilent: false, bShrinkToFit: true});')
     })));
     var bytes = await out.save();
-    return { file: new File([bytes], nombreArchivo(titulo) + '.pdf', { type: 'application/pdf' }), paginas: hojas.length };
+    return { file: new File([bytes], nombreArchivo(titulo) + '.pdf', { type: 'application/pdf' }), paginas: out.getPageCount() };
   }
 
   // Qué PDF salen según el modo elegido. El número delante es el orden de impresión.
