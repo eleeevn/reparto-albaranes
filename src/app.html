@@ -520,19 +520,27 @@
   }
 
   // Subrayado y zumo de un cliente en su fila de la relación de albaranes (fila copiada o original en y).
-  function marcasCliente(g, a, nombre, y) {
+  // «limite» = donde empieza la columna Bultos: el zumo nunca la pisa.
+  function marcasCliente(g, a, nombre, y, limite) {
     if (a.subrayar) nombre.forEach(function (r) { rect(g, r.x0, y + r.y + 1.6, r.x1 - r.x0, 0.9, ROJO); });
-    // zumo de naranja 5L del cliente detrás de su nombre: «NOMBRE - 5 N / 2 HPP»
+    // zumo de naranja 5L del cliente detrás de su nombre: normal sin letra y HPP con H («NOMBRE - 5 / 2 H»)
     var ult = nombre.reduce(function (m, r) { return !m || r.y > m.y ? r : m; }, null);
-    var zumo = [a.naranjaN ? fmt(a.naranjaN) + ' N' : '', a.naranjaHPP ? fmt(a.naranjaHPP) + ' HPP' : ''].filter(Boolean).join(' / ');
-    if (ult && zumo) texto(g, ' - ' + zumo, ult.x1, y + ult.y, 8, true, 0, NEGRO);
+    var zumo = [a.naranjaN ? fmt(a.naranjaN) : '', a.naranjaHPP ? fmt(a.naranjaHPP) + ' H' : ''].filter(Boolean).join(' / ');
+    if (!ult || !zumo) return;
+    var s = ' - ' + zumo, fin = (limite || 555) - 3, tam = 7;
+    // más pequeño si no cabe en lo que queda hasta Bultos (hasta 5 pt)
+    while (tam > 5 && ult.x1 + g.fb.widthOfTextAtSize(s, tam) > fin) tam -= 0.5;
+    var x = ult.x1, an = g.fb.widthOfTextAtSize(s, tam);
+    // con un nombre que llega hasta el borde ni a 5 pt cabe: se apoya en el borde tapando el final del nombre
+    if (x + an > fin) { x = fin - an; rect(g, x, y + ult.y - tam, an + 1, tam + 1.5, BLANCO); }
+    texto(g, s, x, y + ult.y, tam, true, 0, NEGRO);
   }
 
   // Ruta sin cambios: la carta se deja como está y solo se marcan las filas de esta página.
   function anotaFilas(g, pg) {
     var tb = pg.info.tabla;
     if (!tb) return;
-    tb.filas.forEach(function (f) { if (albs[f.numero]) marcasCliente(g, albs[f.numero], f.nombre, f.arriba); });
+    tb.filas.forEach(function (f) { if (albs[f.numero]) marcasCliente(g, albs[f.numero], f.nombre, f.arriba, tb.cols.bultos); });
   }
 
   // Busca la fila de un albarán (o de un artículo) en las cartas: primero en la propia, luego en las de origen, luego en todas.
@@ -605,7 +613,7 @@
           [[a.numero, cols.albaran], [a.fecha, cols.fecha], [a.cuenta, cols.cliente], [a.cliente, cols.nombre], [a.cliente, cols.busqueda]].forEach(function (v) { if (v[1] != null) texto(g, v[0] || '', v[1], base, 8, false, 0, NEGRO); });
           nombre = [{ x0: cols.busqueda, x1: cols.busqueda + g.f.widthOfTextAtSize(limpio(a.cliente), 8), y: 7.5 }];
         }
-        marcasCliente(g, a, nombre, it.y);
+        marcasCliente(g, a, nombre, it.y, cols && cols.bultos);
       }
       if (b.tipo === 'art') {
         var f = b.fila, tam = f && f.cant ? f.cant.h : 8, der = f && f.cant ? f.cant.x + f.cant.w : 443.5;
