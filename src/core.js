@@ -56,10 +56,19 @@
     // Tabla: filas ancladas por el código de producto en la columna izquierda.
     var cabTabla = t.filter(function (a) { return a.s === 'Producto'; })[0];
 
-    // Observación del albarán («Entregar antes de las 9»): texto suelto en la columna derecha, entre la cabecera y la tabla.
+    // Observación del albarán («Entregar antes de las 9»): renglón suelto entre la cabecera y la tabla que EMPIEZA en la
+    // columna de las etiquetas (Número, Pedido cliente…). Los valores que se desbordan («123456X», «ABC») van más a la
+    // derecha, detrás de los dos puntos, y los bloques de datos (EXPEDICIÓN, Bultos, Peso) no son observaciones.
     var cuentaPed = t.filter(function (a) { return /^Cuenta de pedido/.test(a.s); })[0];
-    res.observacion = cuentaPed && cabTabla ? t.filter(function (a) { return a.x >= 250 && a.y > cuentaPed.y + 4 && a.y < cabTabla.y - 4; })
-      .sort(function (a, b) { return a.y - b.y || a.x - b.x; }).map(function (a) { return a.s; }).join(' ') : '';
+    var renglones = {};
+    if (cuentaPed && cabTabla) t.forEach(function (a) {
+      if (a.x >= 250 && a.y > cuentaPed.y + 4 && a.y < cabTabla.y - 4) (renglones[Math.round(a.y)] = renglones[Math.round(a.y)] || []).push(a);
+    });
+    var etiqueta = cuentaPed ? cuentaPed.x : 262;
+    res.observacion = Object.keys(renglones).sort(function (a, b) { return a - b; }).map(function (k) {
+      var r = renglones[k].sort(function (a, b) { return a.x - b.x; });
+      return Math.abs(r[0].x - etiqueta) <= 8 ? r.map(function (a) { return a.s; }).join(' ') : '';
+    }).filter(function (s) { return s && !/EXPEDICI|Bultos|Peso|Pedido|Cuenta|Matr[ií]cula|Fecha/i.test(s); }).join(' ');
     var yIni = cabTabla ? cabTabla.y + 8 : 0;
     var fin = t.filter(function (a) { return /^Base$|^Total$/.test(a.s) && a.y > yIni; }).sort(function (a, b) { return a.y - b.y; })[0];
     var yFin = fin ? fin.y : 1e9;

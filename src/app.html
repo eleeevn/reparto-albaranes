@@ -335,6 +335,12 @@
     orden.forEach(function (d) {
       albsDe(d).forEach(function (n) { if (albs[n].observacion) obs.push('<li><b>' + esc(porDiario(d).ruta) + '</b> · ' + esc(busquedaDe(n)) + ': <b>' + esc(albs[n].observacion) + '</b></li>'); });
     });
+    // Clientes de SIN RUTA que la app ha colocado sola porque ya conocía su ruta: se avisa por si acaso
+    var rec = [];
+    orden.forEach(function (d) {
+      albsDe(d).forEach(function (n) { if (albs[n].auto) rec.push('<li><b>' + esc(porDiario(d).ruta) + '</b> · ' + esc(albs[n].cliente) + ' <span class="tag">(' + esc(n) + ')</span></li>'); });
+    });
+    if (rec.length) av.push('<div class="msg obs">⚠ <b>' + rec.length + (rec.length > 1 ? ' clientes colocados' : ' cliente colocado') + ' por ruta recordada</b> (venían en SIN RUTA; revisa que sigan yendo ahí, y si no, muévelos):<ul>' + rec.join('') + '</ul></div>');
     if (obs.length) av.push('<div class="msg obs">⚠ <b>' + obs.length + (obs.length > 1 ? ' observaciones' : ' observación') + ' en los albaranes</b> (salen también en la carta de porte):<ul>' + obs.join('') + '</ul></div>');
     // Los de «sin ruta» se preguntan, pero no bloquean: SIN RUTA puede imprimirse como una ruta más.
     var pend = pendientes().filter(function (n) { return albs[n] && destino(n); });
