@@ -157,8 +157,23 @@
     guarda('alb.listas', listas);
   }
   function normaliza(tipo, v) { v = String(v || '').replace(/\s+/g, ' ').trim(); return tipo === 'mat' ? v.toUpperCase() : v; }
+  // Etiquetas de la carta de porte que no son un conductor ni una matrícula («Peso:», «Agencia»…): se rechazan
+  function esEtiqueta(v) { return /:\s*$/.test(v) || /^(peso|bultos|agencia|conductor|matr[ií]cula|observaciones|fecha|p[aá]gina)\b/i.test(v); }
+  (function limpiaEtiquetas() {
+    var cambio = false;
+    ['cond', 'mat'].forEach(function (t) { var l = listas[t].filter(function (v) { return !esEtiqueta(v); }); if (l.length !== listas[t].length) { listas[t] = l; cambio = true; } });
+    if (cambio) guarda('alb.listas', listas);
+    var cambioRuta = false;
+    Object.keys(memChofer).forEach(function (r) {
+      var m = memChofer[r];
+      if (m.conductor && esEtiqueta(m.conductor)) { m.conductor = ''; cambioRuta = true; }
+      if (m.matricula && esEtiqueta(m.matricula)) { m.matricula = ''; cambioRuta = true; }
+    });
+    if (cambioRuta) guarda('alb.chofer', memChofer);
+  })();
   function anadeLista(tipo, v) {
     v = normaliza(tipo, v);
+    if (esEtiqueta(v)) return '';
     if (v && listas[tipo].indexOf(v) < 0) { listas[tipo].push(v); listas[tipo].sort(function (a, b) { return a.localeCompare(b, 'es'); }); guarda('alb.listas', listas); }
     return v;
   }

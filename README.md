@@ -6,7 +6,7 @@ App de un solo archivo (`dist/Reparto.html`) para preparar la impresión diaria 
 1. Abrir `dist/Reparto.html` (doble clic; funciona sin internet, también en móvil).
 2. Arrastrar todos los PDF del día (albaranes + cartas de porte).
 3. Asignar ruta a los albaranes de SIN RUTA (se recuerda cliente → ruta para los días siguientes), o dejarlos y SIN RUTA se imprime como una ruta más.
-4. Elegir conductor y matrícula por ruta en sus desplegables (se recuerdan por ruta; «+ Añadir nuevo…» guarda uno nuevo). El apartado «Conductores y matrículas guardados» permite añadir y eliminar (localStorage alb.listas; matrículas en mayúsculas). Mover clientes entre rutas si hace falta.
+4. Elegir conductor y matrícula por ruta en sus desplegables (se recuerdan por ruta; «+ Añadir nuevo…» guarda uno nuevo). El apartado «Conductores y matrículas guardados» permite añadir y eliminar (localStorage alb.listas; matrículas en mayúsculas). Las etiquetas de la C.P. («Peso:», «Agencia», cualquier cosa acabada en «:») no se admiten y se limpian solas al abrir. Mover clientes entre rutas si hace falta.
 5. Elegir cómo salen los PDF (se recuerda) y «Generar PDF»: **separados** (por defecto: por ruta, `Na. Ruta X - Carta de porte - CONDUCTOR - fecha.pdf` y `Nb. Ruta X - Albaranes - …`), **junto** (`N. Ruta X - CONDUCTOR - fecha.pdf` con la C.P. delante de sus albaranes) o **todo** en un PDF (`Reparto - todas las rutas - fecha.pdf`). N = orden de impresión. Descargar uno a uno, «Descargar todos» o «Enviar todos…». Cada PDF lleva la orden de imprimir al abrir (OpenAction JavaScript): Adobe Reader la respeta; el visor de Edge/Chrome puede ignorarla (entonces Ctrl+P). Cada PDF es un trabajo de impresión: la impresora grapa cada uno aparte.
 
 ## App instalable
