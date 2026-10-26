@@ -94,9 +94,18 @@
     </div>
   </div>
 
+  <details class="card" id="flota"><summary>Conductores y matrículas guardados</summary><div class="row" id="flotaListas" style="align-items:flex-start; margin-top:10px"></div></details>
   <details class="card" id="futuros" hidden><summary>Albaranes pospuestos para otros días</summary><div id="futLista"></div></details>
   <details class="card" id="recordados"><summary>Clientes sin ruta recordados</summary><div id="recLista"></div></details>
 </main>
+
+<div id="modalNuevo" class="modal" hidden>
+  <div class="card caja">
+    <h2 id="nuevoTit">Añadir</h2>
+    <input type="text" id="nuevoValor" autocomplete="off">
+    <div class="row"><span class="grow"></span><button id="nuevoCancelar">Cancelar</button><button id="nuevoOk" class="main">Añadir</button></div>
+  </div>
+</div>
 
 <div id="modalPos" class="modal" hidden>
   <div class="card caja">
@@ -134,6 +143,33 @@
   function guarda(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
   var memCliente = lee('alb.clienteRuta', {});   // cliente -> nombre de ruta
   var memChofer = lee('alb.chofer', {});         // nombre de ruta -> {conductor, matricula}
+
+  // ---- conductores y matrículas guardados (se eligen en desplegables) ----
+  var NUEVO = '__nuevo__';
+  var listas = lee('alb.listas', null);
+  if (!listas) {   // la primera vez se rellenan con los que ya se usaron en alguna ruta
+    listas = { cond: [], mat: [] };
+    Object.keys(memChofer).forEach(function (r) {
+      var m = memChofer[r];
+      if (m.conductor && listas.cond.indexOf(m.conductor) < 0) listas.cond.push(m.conductor);
+      if (m.matricula && listas.mat.indexOf(m.matricula) < 0) listas.mat.push(m.matricula);
+    });
+    guarda('alb.listas', listas);
+  }
+  function normaliza(tipo, v) { v = String(v || '').replace(/\s+/g, ' ').trim(); return tipo === 'mat' ? v.toUpperCase() : v; }
+  function anadeLista(tipo, v) {
+    v = normaliza(tipo, v);
+    if (v && listas[tipo].indexOf(v) < 0) { listas[tipo].push(v); listas[tipo].sort(function (a, b) { return a.localeCompare(b, 'es'); }); guarda('alb.listas', listas); }
+    return v;
+  }
+  function desplegable(tipo, d, valor) {
+    var vals = listas[tipo].slice();
+    if (valor && vals.indexOf(valor) < 0) vals.push(valor);   // uno ya quitado de la lista sigue viéndose en su ruta
+    return '<select class="' + (tipo === 'cond' ? 'grow' : '') + '" data-' + tipo + '="' + esc(d) + '" aria-label="' + (tipo === 'cond' ? 'Conductor' : 'Matrícula') + '">' +
+      '<option value="">' + (tipo === 'cond' ? 'Conductor…' : 'Matrícula…') + '</option>' +
+      vals.map(function (v) { return '<option value="' + esc(v) + '"' + (v === valor ? ' selected' : '') + '>' + esc(v) + '</option>'; }).join('') +
+      '<option value="' + NUEVO + '">+ Añadir nuevo…</option></select>';
+  }
 
   // ---- albaranes pospuestos (IndexedDB: guardan su PDF, que puede no caber en localStorage) ----
   // Cada uno: {numero, cliente, ruta, fecha (del albarán), para ('AAAA-MM-DD'), pdf (bytes), nombre}
@@ -458,8 +494,7 @@
       '<label class="tag"><input type="checkbox" data-incl="' + esc(d) + '"' + (ch.incluir ? ' checked' : '') + '> imprimir</label>' +
       '<button class="mini" data-sube="' + i + '"' + (i === 0 ? ' disabled' : '') + '>↑</button>' +
       '<button class="mini" data-baja="' + i + '"' + (i === orden.length - 1 ? ' disabled' : '') + '>↓</button></div>' +
-      '<div class="row" style="margin-top:8px"><input type="text" class="grow" placeholder="Conductor" list="dl-cond" data-cond="' + esc(d) + '" value="' + esc(ch.conductor) + '">' +
-      '<input type="text" placeholder="Matrícula" list="dl-mat" data-mat="' + esc(d) + '" value="' + esc(ch.matricula) + '"></div>' +
+      '<div class="row" style="margin-top:8px">' + desplegable('cond', d, ch.conductor) + desplegable('mat', d, ch.matricula) + '</div>' +
       '<div class="tot">Total 5L: ' + fmt(t.total) + ' <span>' + (desglose ? '(' + desglose + ')' : '') + '</span></div>' +
       (function () {
         var p = pesoRuta(d);
@@ -475,11 +510,7 @@
     $('recLista').innerHTML = k.length ? '<table>' + k.map(function (c) {
       return '<tr><td>' + esc(c) + '</td><td>' + esc(memCliente[c]) + '</td><td class="n"><button class="mini" data-olvida="' + esc(c) + '">Olvidar</button></td></tr>';
     }).join('') + '</table>' : '<div class="tag">Todavía no hay ninguno.</div>';
-    var cond = {}, mat = {};
-    Object.keys(memChofer).forEach(function (r) { if (memChofer[r].conductor) cond[memChofer[r].conductor] = 1; if (memChofer[r].matricula) mat[memChofer[r].matricula] = 1; });
-    var dl = $('dl-cond') || (function () { var a = document.createElement('datalist'); a.id = 'dl-cond'; document.body.appendChild(a); var b = document.createElement('datalist'); b.id = 'dl-mat'; document.body.appendChild(b); return a; })();
-    dl.innerHTML = Object.keys(cond).map(function (v) { return '<option value="' + esc(v) + '">'; }).join('');
-    $('dl-mat').innerHTML = Object.keys(mat).map(function (v) { return '<option value="' + esc(v) + '">'; }).join('');
+    pintaFlota();
   }
 
   // ---- eventos ----
@@ -494,6 +525,7 @@
     if (t.dataset.mover != null && t.value === POSP) { var num = t.dataset.mover; t.value = ''; abrePosponer(num); }
     else if (t.dataset.mover != null) mover(t.dataset.mover, t.value);
     else if (t.dataset.incl) { chofer[t.dataset.incl].incluir = t.checked; pinta(); }
+    else if ((t.dataset.cond || t.dataset.mat) && t.value === NUEVO) abreNuevo(t.dataset.cond ? 'cond' : 'mat', t.dataset.cond || t.dataset.mat);
     else if (t.dataset.cond || t.dataset.mat) {
       var d = t.dataset.cond || t.dataset.mat, ch = chofer[d];
       if (t.dataset.cond) ch.conductor = t.value.trim(); else ch.matricula = t.value.trim().toUpperCase();
@@ -913,6 +945,47 @@
     } catch (e) { if (!/cancel/i.test(e && e.message || '')) fallo(e); }
   });
   $('gen').addEventListener('click', function () { genera().catch(function (e) { avisa('Error al generar: ' + e.message, 'bad'); $('gen').disabled = false; }); });
+
+  // ---- apartado «Conductores y matrículas guardados»: añadir y eliminar ----
+  function pintaFlota() {
+    $('flotaListas').innerHTML = [['cond', 'Conductores', 'Nombre del conductor'], ['mat', 'Matrículas', 'Ej. 1234 ABC']].map(function (x) {
+      var l = listas[x[0]];
+      return '<div class="grow" style="min-width:220px; display:grid; gap:8px"><h3 style="margin:0">' + x[1] + ' <span class="tag">(' + l.length + ')</span></h3>' +
+        '<div class="row"><input type="text" class="grow" id="add-' + x[0] + '" placeholder="' + x[2] + '" autocomplete="off"><button class="mini" data-addlista="' + x[0] + '">Añadir</button></div>' +
+        (l.length ? '<table>' + l.map(function (v, i) {
+          return '<tr><td>' + esc(v) + '</td><td class="n"><button class="mini" data-quitalista="' + x[0] + '" data-i="' + i + '" aria-label="Eliminar ' + esc(v) + '">Eliminar</button></td></tr>';
+        }).join('') + '</table>' : '<div class="tag">Todavía no hay ninguno.</div>') + '</div>';
+    }).join('');
+  }
+  $('flotaListas').addEventListener('click', function (e) {
+    var d = e.target.dataset;
+    if (d.addlista) { var inp = $('add-' + d.addlista); if (anadeLista(d.addlista, inp.value)) { pinta(); setTimeout(function () { $('add-' + d.addlista).focus(); }, 0); } }
+    if (d.quitalista) { listas[d.quitalista].splice(+d.i, 1); guarda('alb.listas', listas); pinta(); }
+  });
+  $('flotaListas').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && e.target.id && e.target.id.indexOf('add-') === 0) { e.preventDefault(); $('flotaListas').querySelector('[data-addlista="' + e.target.id.slice(4) + '"]').click(); }
+  });
+
+  // «+ Añadir nuevo…» desde el desplegable de una ruta: se guarda en la lista y queda elegido en esa ruta
+  var nuevoPara = null;
+  function abreNuevo(tipo, d) {
+    nuevoPara = { tipo: tipo, d: d };
+    $('nuevoTit').textContent = tipo === 'cond' ? 'Añadir conductor' : 'Añadir matrícula';
+    $('nuevoValor').value = ''; $('nuevoValor').placeholder = tipo === 'cond' ? 'Nombre del conductor' : 'Ej. 1234 ABC';
+    $('modalNuevo').hidden = false; $('nuevoValor').focus();
+  }
+  function cierraNuevo() { $('modalNuevo').hidden = true; nuevoPara = null; pinta(); }
+  $('nuevoCancelar').addEventListener('click', cierraNuevo);
+  $('nuevoValor').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('nuevoOk').click(); if (e.key === 'Escape') cierraNuevo(); });
+  $('nuevoOk').addEventListener('click', function () {
+    var p = nuevoPara, v = p && anadeLista(p.tipo, $('nuevoValor').value);
+    if (!v) { $('nuevoValor').focus(); return; }
+    var ch = chofer[p.d];
+    if (p.tipo === 'cond') ch.conductor = v; else ch.matricula = v;
+    memChofer[porDiario(p.d).ruta] = { conductor: ch.conductor, matricula: ch.matricula };
+    guarda('alb.chofer', memChofer);
+    cierraNuevo();
+  });
 
   // ---- posponer albaranes ----
   var posNum = null;
