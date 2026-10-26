@@ -158,7 +158,8 @@
   }
   function normaliza(tipo, v) { v = String(v || '').replace(/\s+/g, ' ').trim(); return tipo === 'mat' ? v.toUpperCase() : v; }
   // Etiquetas de la carta de porte que no son un conductor ni una matrícula («Peso:», «Agencia»…): se rechazan
-  function esEtiqueta(v) { return /:\s*$/.test(v) || /^(peso|bultos|agencia|conductor|matr[ií]cula|observaciones|fecha|p[aá]gina)\b/i.test(v); }
+  // (solo si es la etiqueta tal cual: «Peso», «Peso:», «Agencia…»; un nombre que empiece igual no se toca)
+  function esEtiqueta(v) { return /:\s*$/.test(v) || /^(peso|bultos|agencia|conductor|matr[ií]cula|observaciones|fecha( de carga)?|p[aá]gina)[\s.:…]*$/i.test(v); }
   (function limpiaEtiquetas() {
     var cambio = false;
     ['cond', 'mat'].forEach(function (t) { var l = listas[t].filter(function (v) { return !esEtiqueta(v); }); if (l.length !== listas[t].length) { listas[t] = l; cambio = true; } });
