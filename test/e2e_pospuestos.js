@@ -28,10 +28,7 @@ const path = require('path');
   await carga();
   console.log('Antes:', await totalDia());
   NUM = await page.evaluate(() => [...document.querySelector('#rutas .card').querySelectorAll('tr')].find(tr => tr.querySelector('select[data-mover]') && +tr.children[3].textContent.replace(',', '.') > 0).querySelector('select').dataset.mover);
-  await page.evaluate((NUM) => {
-    const s = document.querySelector('select[data-mover="' + NUM + '"]');
-    s.value = '__pospuesto__'; s.dispatchEvent(new Event('change', { bubbles: true }));
-  }, NUM);
+  await page.click('[data-posponer="' + NUM + '"]');
   console.log('Ventana posponer:', await page.$eval('#posQue', e => e.textContent), '| fecha propuesta', await page.$eval('#posFecha', e => e.value));
   await page.click('#posOk');
   await page.waitForFunction(() => /Pospuestos/.test(document.querySelector('#rutas').innerText), { timeout: 30000 });
