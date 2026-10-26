@@ -1,5 +1,5 @@
 // Comprueba los avisos: observaciones (solo las reales) y clientes colocados por ruta recordada.
-// 1ª carga: se manda OTRO CLIENTE (SIN RUTA) a RutaA; 2ª carga: debe colocarse solo y avisar.
+// 1ª carga: se manda el primer albarán de SIN RUTA a la primera ruta; 2ª carga: debe colocarse solo y avisar.
 const puppeteer = require('puppeteer-core');
 const fs = require('fs');
 const path = require('path');
@@ -20,7 +20,8 @@ const path = require('path');
   console.log('--- 1ª carga:\n' + await page.$eval('#avisos', e => e.innerText));
   await page.evaluate(() => {
     const card = [...document.querySelectorAll('#rutas .card')].find(c => /SIN RUTA/.test(c.querySelector('h2').textContent));
-    const s = card.querySelector('select[data-mover]'), o = [...s.options].find(o => o.textContent === 'RutaA');
+    const primera = document.querySelector('#rutas .card h2').textContent.split(' ')[0];
+    const s = card.querySelector('select[data-mover]'), o = [...s.options].find(o => o.textContent === primera);
     s.value = o.value; s.dispatchEvent(new Event('change', { bubbles: true }));
   });
   await page.click('#limpiar');

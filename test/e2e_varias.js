@@ -1,5 +1,5 @@
-// Prueba de carta de porte de varias páginas: mueve a RutaB los albaranes de todas las demás rutas
-// (≈39 clientes) y genera; la carta de RutaB tiene que salir en más páginas, sin texto aplastado.
+// Prueba de carta de porte de varias páginas: mueve a la ruta con más albaranes los de todas las demás
+// y genera; su carta tiene que salir en más páginas, sin texto aplastado.
 const puppeteer = require('puppeteer-core');
 const fs = require('fs');
 const path = require('path');
@@ -18,27 +18,31 @@ const path = require('path');
   const pdfs = fs.readdirSync('muestras').filter(f => f.endsWith('.pdf')).map(f => path.resolve('muestras', f));
   await (await page.$('#file')).uploadFile(...pdfs);
   await page.waitForFunction(() => document.querySelectorAll('#rutas .card').length >= 5, { timeout: 60000 });
-  // mover todo a RutaB, select a select, hasta que no quede ninguno fuera
+  // la ruta destino: la que más albaranes tiene (el nombre se lee de la pantalla)
+  const destino = await page.evaluate(() => [...document.querySelectorAll('#rutas .card')]
+    .map(c => ({ n: c.querySelector('h2').textContent.split(' ')[0], k: c.querySelectorAll('select[data-mover]').length }))
+    .filter(x => !/^SIN/.test(x.n)).sort((a, b) => b.k - a.k)[0].n);
+  // mover todo a esa ruta, select a select, hasta que no quede ninguno fuera
   for (;;) {
-    const hecho = await page.evaluate(() => {
-      const card = [...document.querySelectorAll('#rutas .card')].find(c => !/RutaB/.test(c.querySelector('h2').textContent) && c.querySelector('select[data-mover]'));
+    const hecho = await page.evaluate((destino) => {
+      const card = [...document.querySelectorAll('#rutas .card')].find(c => c.querySelector('h2').textContent.split(' ')[0] !== destino && c.querySelector('select[data-mover]'));
       if (!card) return false;
-      const s = card.querySelector('select[data-mover]'), o = [...s.options].find(o => o.textContent === 'RutaB');
+      const s = card.querySelector('select[data-mover]'), o = [...s.options].find(o => o.textContent === destino);
       s.value = o.value; s.dispatchEvent(new Event('change', { bubbles: true }));
       return true;
-    });
+    }, destino);
     if (!hecho) break;
   }
-  await page.evaluate(() => {
-    const c = [...document.querySelectorAll('#rutas .card')].find(c => /RutaB/.test(c.querySelector('h2').textContent));
+  await page.evaluate((destino) => {
+    const c = [...document.querySelectorAll('#rutas .card')].find(c => c.querySelector('h2').textContent.split(' ')[0] === destino);
     const i = c.querySelector('[data-cond]'); i.value = 'CONDUCTOR C'; i.dispatchEvent(new Event('change', { bubbles: true }));
-  });
+  }, destino);
   console.log(await page.evaluate(() => [...document.querySelectorAll('#rutas .card')].map(c => c.querySelector('h2').textContent.split(' ')[0] + ': ' + Math.max(0, c.querySelectorAll('tr').length - 1) + ' alb.').join(' | ')));
   await page.click('input[name=modo][value=separados]');
   await page.click('#gen');
   await page.waitForFunction(() => /Listo/.test(document.querySelector('#avisos').innerText), { timeout: 300000 });
   console.log(await page.$eval('#resLista', e => e.innerText));
-  await page.evaluate(() => [...document.querySelectorAll('#resLista button')].find(b => /Ruta B - Carta/.test(b.closest('tr').textContent)).click());
+  await page.evaluate(() => [...document.querySelectorAll('#resLista button')].find(b => /Carta de porte - CONDUCTOR C.*pdf/.test(b.closest('tr').textContent)).click());
   await new Promise(r => setTimeout(r, 3000));
   console.log('Descargado:', fs.readdirSync(out));
   await browser.close();

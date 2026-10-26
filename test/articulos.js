@@ -11,7 +11,7 @@
       const hdr = t.find(a => a.s === 'Artículo');
       if (!hdr) continue;
       const codes = t.filter(a => a.x < 60 && /^[A-Z]{2}\d{5,7}$/.test(a.s) && a.y > hdr.y).sort((a, b) => a.y - b.y);
-      if (i === 1 && f.includes('DIA')) console.log('hdr', JSON.stringify(t.filter(a => Math.abs(a.y - hdr.y) < 15).map(a => [a.s, Math.round(a.x), Math.round(a.y)])));
+      if (i === 1 && f === fs.readdirSync('muestras').filter(n => n.startsWith('C.P'))[0]) console.log('hdr', JSON.stringify(t.filter(a => Math.abs(a.y - hdr.y) < 15).map(a => [a.s, Math.round(a.x), Math.round(a.y)])));
       for (const c of codes) {
         const row = t.filter(a => Math.abs(a.y - c.y) < 2).sort((a, b) => a.x - b.x);
         filas.push({ code: c.s, y: Math.round(c.y), pag: i, row: row.map(a => [a.s, Math.round(a.x), Math.round(a.w)]) });

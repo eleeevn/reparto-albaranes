@@ -1,4 +1,4 @@
-// Posponer: 21AL000001 (CLIENTE DE EJEMPLO, 10 de 5L, RutaA) sale del reparto, se resta de la carta y se guarda;
+// Posponer: el primer albarán con zumo de 5L de la primera ruta sale del reparto, se resta de la carta y se guarda;
 // al recargar los PDF sigue pospuesto; si «llega el día» (se adelanta la fecha guardada) aparece el recordatorio
 // y «Añadir al reparto» lo vuelve a meter.
 const puppeteer = require('puppeteer-core');
@@ -21,14 +21,17 @@ const path = require('path');
     await (await page.$('#file')).uploadFile(...pdfs);
     await page.waitForFunction(() => document.querySelectorAll('#rutas .card').length >= 5, { timeout: 60000 });
   };
-  const totalDia = () => page.evaluate(() => [...document.querySelectorAll('#rutas .card')].find(c => /RutaA/.test(c.querySelector('h2').textContent)).querySelector('.tot').textContent);
+  // la primera ruta de la pantalla y su primer albarán con zumo de 5L (nada de nombres escritos aquí)
+  const totalDia = () => page.evaluate(() => document.querySelector('[data-incl]').closest('.card').querySelector('.tot').textContent);
+  let NUM = null;
 
   await carga();
   console.log('Antes:', await totalDia());
-  await page.evaluate(() => {
-    const s = document.querySelector('select[data-mover="21AL000001"]');
+  NUM = await page.evaluate(() => [...document.querySelector('#rutas .card').querySelectorAll('tr')].find(tr => tr.querySelector('select[data-mover]') && +tr.children[3].textContent.replace(',', '.') > 0).querySelector('select').dataset.mover);
+  await page.evaluate((NUM) => {
+    const s = document.querySelector('select[data-mover="' + NUM + '"]');
     s.value = '__pospuesto__'; s.dispatchEvent(new Event('change', { bubbles: true }));
-  });
+  }, NUM);
   console.log('Ventana posponer:', await page.$eval('#posQue', e => e.textContent), '| fecha propuesta', await page.$eval('#posFecha', e => e.value));
   await page.click('#posOk');
   await page.waitForFunction(() => /Pospuestos/.test(document.querySelector('#rutas').innerText), { timeout: 30000 });
@@ -36,8 +39,8 @@ const path = require('path');
   console.log('Tarjeta:', await page.evaluate(() => [...document.querySelectorAll('#rutas .card')].find(c => /Pospuestos/.test(c.innerText)).innerText.replace(/\s+/g, ' ')));
   console.log('Otros días:', await page.$eval('#futuros', e => (e.hidden ? '(oculto) ' : '') + e.innerText.replace(/\s+/g, ' ')));
 
-  // generar solo RutaA y mirar su carta
-  await page.evaluate(() => document.querySelectorAll('[data-incl]').forEach(x => { if (!/RutaA/.test(x.closest('.card').querySelector('h2').textContent)) { x.checked = false; x.dispatchEvent(new Event('change', { bubbles: true })); } }));
+  // generar solo la primera ruta y mirar su carta
+  await page.evaluate(() => { const primera = document.querySelector('[data-incl]').closest('.card').querySelector('h2').textContent.split(' ')[0]; document.querySelectorAll('[data-incl]').forEach(x => { if (x.closest('.card').querySelector('h2').textContent.split(' ')[0] !== primera) { x.checked = false; x.dispatchEvent(new Event('change', { bubbles: true })); } }); });
   await page.click('input[name=modo][value=separados]');
   await page.click('#gen');
   await page.waitForFunction(() => /Listo/.test(document.querySelector('#avisos').innerText), { timeout: 200000 });
@@ -50,18 +53,18 @@ const path = require('path');
   console.log('Recargado, sigue pospuesto:', await page.evaluate(() => /Pospuestos/.test(document.querySelector('#rutas').innerText)), '|', await totalDia());
 
   // «llega el día»: se pone la fecha guardada a hoy y se abre la app de nuevo, sin PDF
-  await page.evaluate(() => new Promise(ok => {
+  await page.evaluate((NUM) => new Promise(ok => {
     const r = indexedDB.open('reparto', 1);
     r.onsuccess = () => {
-      const tx = r.result.transaction('pospuestos', 'readwrite'), s = tx.objectStore('pospuestos'), g = s.get('21AL000001');
+      const tx = r.result.transaction('pospuestos', 'readwrite'), s = tx.objectStore('pospuestos'), g = s.get(NUM);
       g.onsuccess = () => { const v = g.result; const d = new Date(); v.para = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); s.put(v); };
       tx.oncomplete = () => { r.result.close(); ok(); };
     };
-  }));
+  }), NUM);
   await page.reload();
   await page.waitForFunction(() => /pospuesto/.test(document.querySelector('#avisos').innerText), { timeout: 30000 });
   console.log('Recordatorio:', await page.$eval('#avisos', e => e.innerText.replace(/\s+/g, ' ')));
-  await page.click('[data-posanade="21AL000001"]');
+  await page.click('[data-posanade="' + NUM + '"]');
   await page.waitForFunction(() => /Añadido/.test(document.querySelector('#avisos').innerText), { timeout: 30000 });
   console.log('Tras añadir:', await page.$eval('#avisos', e => e.innerText.replace(/\s+/g, ' ').slice(0, 300)));
   console.log('Lista:', await page.$eval('#rutas', e => e.innerText.replace(/\s+/g, ' ').slice(0, 200)));
