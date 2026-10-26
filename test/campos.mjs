@@ -3,7 +3,6 @@ import fs from 'fs';
 const require = createRequire(import.meta.url);
 const core = require('../src/core.js');
 const pdfjs = require('pdfjs-dist/legacy/build/pdf.js');
-// la primera carta de porte y el primer PDF de albaranes que haya en muestras/
 const cp = 'muestras/' + fs.readdirSync('muestras').filter(n => n.startsWith('C.P'))[0];
 const alb = 'muestras/' + fs.readdirSync('muestras').filter(n => !n.startsWith('C.P') && n.endsWith('.pdf'))[0];
 for (const [f,rx] of [[cp,/Matr|Conduc|Agencia|Peso|Bultos/],[alb,/Matric|Número|Fecha|Pedido/]]) {

@@ -1,6 +1,3 @@
-// Posponer: el primer albarán con zumo de 5L de la primera ruta sale del reparto, se resta de la carta y se guarda;
-// al recargar los PDF sigue pospuesto; si «llega el día» (se adelanta la fecha guardada) aparece el recordatorio
-// y «Añadir al reparto» lo vuelve a meter.
 const puppeteer = require('puppeteer-core');
 const fs = require('fs');
 const path = require('path');
@@ -21,7 +18,6 @@ const path = require('path');
     await (await page.$('#file')).uploadFile(...pdfs);
     await page.waitForFunction(() => document.querySelectorAll('#rutas .card').length >= 5, { timeout: 60000 });
   };
-  // la primera ruta de la pantalla y su primer albarán con zumo de 5L (nada de nombres escritos aquí)
   const totalDia = () => page.evaluate(() => document.querySelector('[data-incl]').closest('.card').querySelector('.tot').textContent);
   let NUM = null;
 
@@ -36,7 +32,6 @@ const path = require('path');
   console.log('Tarjeta:', await page.evaluate(() => [...document.querySelectorAll('#rutas .card')].find(c => /Pospuestos/.test(c.innerText)).innerText.replace(/\s+/g, ' ')));
   console.log('Otros días:', await page.$eval('#futuros', e => (e.hidden ? '(oculto) ' : '') + e.innerText.replace(/\s+/g, ' ')));
 
-  // generar solo la primera ruta y mirar su carta
   await page.evaluate(() => { const primera = document.querySelector('[data-incl]').closest('.card').querySelector('h2').textContent.split(' ')[0]; document.querySelectorAll('[data-incl]').forEach(x => { if (x.closest('.card').querySelector('h2').textContent.split(' ')[0] !== primera) { x.checked = false; x.dispatchEvent(new Event('change', { bubbles: true })); } }); });
   await page.click('input[name=modo][value=separados]');
   await page.click('#gen');
@@ -44,12 +39,10 @@ const path = require('path');
   await page.evaluate(() => [...document.querySelectorAll('#resLista button')].find(b => /Carta de porte/.test(b.closest('tr').textContent) && /pdf/.test(b.closest('tr').textContent)).click());
   await new Promise(r => setTimeout(r, 2500));
 
-  // recargar con los mismos PDF: tiene que seguir pospuesto
   await page.click('#limpiar');
   await carga();
   console.log('Recargado, sigue pospuesto:', await page.evaluate(() => /Pospuestos/.test(document.querySelector('#rutas').innerText)), '|', await totalDia());
 
-  // «llega el día»: se pone la fecha guardada a hoy y se abre la app de nuevo, sin PDF
   await page.evaluate((NUM) => new Promise(ok => {
     const r = indexedDB.open('reparto', 1);
     r.onsuccess = () => {

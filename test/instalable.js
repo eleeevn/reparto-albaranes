@@ -1,4 +1,3 @@
-// Sirve dist/ en localhost y pregunta a Edge si la app es instalable y si el service worker queda activo.
 const puppeteer = require('puppeteer-core');
 const http = require('http');
 const fs = require('fs');
@@ -22,7 +21,6 @@ const srv = http.createServer((req, res) => {
   const err = await cdp.send('Page.getInstallabilityErrors');
   console.log('Instalable:', err.installabilityErrors.length ? JSON.stringify(err.installabilityErrors) : 'sí');
   console.log('Service worker activo:', await page.evaluate(() => !!navigator.serviceWorker.controller));
-  // sin conexión: debe seguir cargando
   await page.setOfflineMode(true);
   await page.reload();
   console.log('Carga sin internet:', await page.$eval('h1', e => e.textContent));

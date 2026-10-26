@@ -1,15 +1,12 @@
 {
-  "name": "albaranes",
-  "version": "1.9.0",
-  "description": "",
-  "main": "index.js",
+  "name": "reparto-albaranes",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Preparación del reparto diario de cartas de porte y albaranes en PDF",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "node build.js",
+    "test": "node test/e2e.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
     "@capacitor/android": "^6.2.0",
     "@capacitor/core": "^6.2.0",
@@ -20,6 +17,7 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^6.2.0",
+    "acorn": "^8.12.1",
     "puppeteer-core": "^23.11.1"
   }
 }

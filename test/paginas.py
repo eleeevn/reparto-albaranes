@@ -1,4 +1,3 @@
-# Pasa los PDF generados a imágenes (test/salida/<n>_pagN.png) y dice si llevan la orden de imprimir al abrir.
 import glob, os, pymupdf
 
 salida = os.path.join(os.path.dirname(__file__), 'salida')

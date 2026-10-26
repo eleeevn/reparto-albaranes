@@ -1,4 +1,3 @@
-// Guarda la app para que funcione sin internet. Al publicar una versión nueva, build.js cambia VERSION.
 var VERSION = '/*VERSION*/';
 var ARCHIVOS = ['./', './index.html', './manifest.webmanifest', './iconos/icon-192.png', './iconos/icon-512.png', './iconos/icon-maskable-512.png', './iconos/apple-touch-icon.png'];
 
@@ -12,7 +11,6 @@ self.addEventListener('activate', function (e) {
   }).then(function () { return self.clients.claim(); }));
 });
 
-// Primero la red (para recibir versiones nuevas) y, sin conexión, lo guardado.
 self.addEventListener('fetch', function (e) {
   if (e.request.method !== 'GET') return;
   e.respondWith(fetch(e.request).then(function (r) {

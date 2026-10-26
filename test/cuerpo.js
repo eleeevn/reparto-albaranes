@@ -1,4 +1,3 @@
-// Muestra lo que core.js lee de cada página de las cartas de porte: hueco del cuerpo, tablas y «Página X de N».
 const fs = require('fs'); const core = require('../src/core.js'); const pdfjs = require('pdfjs-dist/legacy/build/pdf.js');
 (async () => {
   for (const f of fs.readdirSync('muestras').filter(n => n.startsWith('C.P'))) {

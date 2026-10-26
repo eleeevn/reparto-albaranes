@@ -1,10 +1,7 @@
-// Prueba de carta de porte de varias páginas: mueve a la ruta con más albaranes los de todas las demás
-// y genera; su carta tiene que salir en más páginas, sin texto aplastado.
 const puppeteer = require('puppeteer-core');
 const fs = require('fs');
 const path = require('path');
 
-// Elige en el desplegable de una ruta «+ Añadir nuevo…», escribe el valor y lo añade (como haría una persona)
 async function eligeNuevo(page, selector, valor) {
   await page.evaluate((sel) => { const s = document.querySelector(sel); s.value = '__nuevo__'; s.dispatchEvent(new Event('change', { bubbles: true })); }, selector);
   await page.waitForSelector('#modalNuevo:not([hidden])');
@@ -27,11 +24,9 @@ async function eligeNuevo(page, selector, valor) {
   const pdfs = fs.readdirSync('muestras').filter(f => f.endsWith('.pdf')).map(f => path.resolve('muestras', f));
   await (await page.$('#file')).uploadFile(...pdfs);
   await page.waitForFunction(() => document.querySelectorAll('#rutas .card').length >= 5, { timeout: 60000 });
-  // la ruta destino: la que más albaranes tiene (el nombre se lee de la pantalla)
   const destino = await page.evaluate(() => [...document.querySelectorAll('#rutas .card')]
     .map(c => ({ n: c.querySelector('h2').textContent.split(' ')[0], k: c.querySelectorAll('select[data-mover]').length }))
     .filter(x => !/^SIN/.test(x.n)).sort((a, b) => b.k - a.k)[0].n);
-  // mover todo a esa ruta, select a select, hasta que no quede ninguno fuera
   for (;;) {
     const hecho = await page.evaluate((destino) => {
       const card = [...document.querySelectorAll('#rutas .card')].find(c => c.querySelector('h2').textContent.split(' ')[0] !== destino && c.querySelector('select[data-mover]'));

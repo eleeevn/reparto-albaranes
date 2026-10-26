@@ -1,4 +1,3 @@
-// «Peso:» u otra etiqueta guardada como conductor/matrícula de versiones antiguas: la app la limpia al abrir y no deja añadirla.
 const puppeteer = require('puppeteer-core');
 const path = require('path');
 (async () => {

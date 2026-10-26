@@ -1,52 +1,82 @@
 # Reparto de albaranes
 
-App de un solo archivo (`dist/Reparto.html`) para preparar la impresión diaria de cartas de porte (C.P.) y albaranes.
+Aplicación para preparar el reparto diario: lee las cartas de porte y los albaranes en PDF, los agrupa por ruta, calcula los totales y genera los documentos listos para imprimir.
+
+Funciona sin conexión y sin servidor: todo el procesamiento se hace en el dispositivo.
+
+## Funciones
+
+- Lectura de cartas de porte (de una o varias hojas) y albaranes en PDF; las rutas se toman de la propia carta.
+- Asignación de los albaranes de **SIN RUTA**, con memoria de la ruta de cada cliente y aviso de los colocados automáticamente.
+- Total de zumo de 5 L por ruta y, junto a cada cliente, su zumo de naranja normal y HPP (`- 5 / 2 H`).
+- Subrayado de los clientes cuyo albarán incluye productos que no son zumo de 5 L.
+- Movimiento de albaranes entre rutas: se recalculan la relación de albaranes, la de artículos y el peso de cada carta; las tablas pasan de hoja en hoja y se añaden hojas cuando hace falta.
+- Detección de observaciones del albarán, con aviso en pantalla y traslado a la carta de porte.
+- Posponer un albarán a otra fecha: sale del reparto, se guarda su PDF y se recuerda el día indicado.
+- Conductores y matrículas guardados, seleccionables por ruta.
+- Salida en PDF (carta y albaranes por separado, juntos por ruta o todo en un archivo) e imagen JPG de la primera hoja de cada carta.
 
 ## Uso
-1. Abrir `dist/Reparto.html` (doble clic; funciona sin internet, también en móvil).
-2. Arrastrar todos los PDF del día (albaranes + cartas de porte).
-3. Asignar ruta a los albaranes de SIN RUTA (se recuerda cliente → ruta para los días siguientes), o dejarlos y SIN RUTA se imprime como una ruta más.
-4. Elegir conductor y matrícula por ruta en sus desplegables (se recuerdan por ruta; «+ Añadir nuevo…» guarda uno nuevo). El apartado «Conductores y matrículas guardados» permite añadir y eliminar (localStorage alb.listas; matrículas en mayúsculas). Las etiquetas de la C.P. («Peso:», «Agencia», cualquier cosa acabada en «:») no se admiten y se limpian solas al abrir. Mover clientes entre rutas si hace falta.
-5. Elegir cómo salen los PDF (se recuerda) y «Generar PDF»: **separados** (por defecto: por ruta, `Na. Ruta X - Carta de porte - CONDUCTOR - fecha.pdf` y `Nb. Ruta X - Albaranes - …`), **junto** (`N. Ruta X - CONDUCTOR - fecha.pdf` con la C.P. delante de sus albaranes) o **todo** en un PDF (`Reparto - todas las rutas - fecha.pdf`). N = orden de impresión. Descargar uno a uno, «Descargar todos» o «Enviar todos…». Cada PDF lleva la orden de imprimir al abrir (OpenAction JavaScript): Adobe Reader la respeta; el visor de Edge/Chrome puede ignorarla (entonces Ctrl+P). Cada PDF es un trabajo de impresión: la impresora grapa cada uno aparte.
 
-## App instalable
-- `dist/` es una PWA (manifest, service worker, iconos): servida por https se instala en PC, Android e iPhone y funciona sin internet.
-- Sin publicar todavía.
-- En este PC: acceso directo «Reparto de albaranes» en el escritorio (Edge `--app` sobre `dist/Reparto.html`).
-- Tras generar: botones Descargar y Enviar… (compartir del sistema, para WhatsApp/correo en el móvil).
+1. Abrir la aplicación y cargar los PDF del día (cartas de porte y albaranes).
+2. Revisar los avisos y asignar los albaranes de SIN RUTA.
+3. Elegir conductor y matrícula de cada ruta; mover o posponer albaranes si es necesario.
+4. Elegir el formato de salida y pulsar **Generar PDF**; descargar o enviar los archivos.
 
-## APK de Android
-- `Reparto.apk` (Capacitor 6, id `app.reparto.albaranes`, firmado en modo depuración). Se instala pasándolo al móvil y permitiendo «instalar apps desconocidas».
-- Publicado como release en GitHub (privado): v1.0 → https://github.com/propietario/reparto-albaranes/releases. Nueva versión: `apk.cmd` y `gh release create vX.Y Reparto.apk`.
-- Versión: al publicar una nueva, subir VERSION_APP en build.js (se ve junto al título), versionCode/versionName en android/app/build.gradle y "version" en package.json.
-- Regenerar tras cualquier cambio: `apk.cmd` (build.js + cap sync + gradle). Herramientas en `C:\herramientas` (JDK 17 + SDK 34).
-- Dentro del APK: «Descargar» guarda en Documentos/Reparto (plugin Filesystem) y «Enviar todos…» usa el menú de compartir de Android (plugin Share; en el APK se muestra siempre porque navigator.canShare no existe en el WebView).
-- Icono y pantalla de arranque: `python src/iconos_android.py` (si se regenera android/).
-- iPhone: sin IPA (haría falta Mac + cuenta Apple). Para iPhone, la PWA publicada.
+Cada PDF se imprime como un trabajo independiente. El documento incluye la orden de impresión al abrirse (la respetan los visores compatibles, como Adobe Reader).
 
-## Imágenes
-- Casilla «Además, una imagen de la 1ª hoja de cada carta de porte» (marcada por defecto, se recuerda): JPG ~180 ppp por ruta, con todo lo escrito encima.
+## Estructura
 
-## Reglas
-- No hay rutas fijas: el nombre sale de «Observaciones» de cada C.P. y los albaranes se emparejan por número. Cualquier ruta nueva con el mismo formato vale.
-- Ruta de cada albarán: la C.P. que lo cita (Relación de albaranes), salvo que se mueva a mano.
-- Total 5L: suma de las líneas con unidad `5Litros`, por albarán y por ruta (desglose por producto). Va en el recuadro superior izquierdo de la C.P.
-- Cartas de porte de varias hojas: la relación de albaranes (y la de artículos) puede seguir en la 2ª hoja o más; se juntan los albaranes de todas las hojas de la misma carta (mismo Nº de diario).
-- Cambios de ruta: el cuerpo de la C.P. (relación de albaranes y luego de artículos) se recoloca como texto que corre de página en página, SIN encoger: filas copiadas tal cual (de la C.P. propia o de la de origen), en orden de número/código; al llenarse una hoja sigue en la siguiente repitiendo la cabecera de columnas; si no cabe, se añaden hojas (copias de la última) y se reescribe «Página X de N». Ruta sin cambios: la C.P. se deja igual y solo se marcan las filas en la hoja donde están.
-- Subrayado: una raya roja bajo el «Nombre de búsqueda» del cliente en la Relación de albaranes de la C.P. (no en el albarán), si su albarán lleva algún producto que no sea de 5L, o ninguno de 5L.
-- Zumo por cliente: en la Relación de albaranes de la C.P., detrás del «Nombre de búsqueda» va el zumo de NARANJA 5L del albarán, en negrita, 7 pt: normal sin letra y HPP con H (« - 10», « - 3 H», « - 5 / 2 H»). Nunca pisa la columna Bultos: si no cabe se reduce hasta 5 pt y, en último caso, se apoya en el borde tapando el final del nombre. Limón y pomelo no cuentan aquí (sí en el total 5L del recuadro). Sin naranja 5L, nada.
-- Observaciones: solo cuenta un renglón que EMPIEZA en la columna de las etiquetas (x de «Cuenta de pedido» ±8); los valores desbordados («123456X», «ABC») y bloques de datos (EXPEDICIÓN, Bultos, Peso…) no. Si un albarán trae un texto suelto así encima de la tabla («Entregar antes de las 9», «ENTREGAR POR LA MAÑANA»), en la 1ª hoja de la C.P. se escribe bajo «Agencia»: «OBSERVACIONES:» y una línea por cliente «NOMBRE DE BÚSQUEDA: observación». Viaja con el cliente si cambia de ruta. También se ve en la pantalla (Obs.).
-- Posponer: botón «Posponer» a la derecha del desplegable de cada albarán (fecha por defecto: el día siguiente al del albarán, mínimo mañana). Sale del reparto de hoy como si se moviera fuera (se resta de su C.P.: fila, artículos, peso) y se guarda su PDF en IndexedDB (base «reparto», almacén «pospuestos»). Al recargar los PDF sigue fuera. El día marcado (o después) sale un recordatorio arriba con Añadir al reparto (lo carga y, si su ruta de antes existe ese día, va a ella), Descargar y Quitar. Solo avisa al abrir la app (no hay notificaciones).
-- Orden de impresión: C.P. de la ruta + sus albaranes, luego la siguiente ruta (orden con ↑↓).
-- Tipografía: todo lo que escribe la app va como el documento (Helvetica = Arial, negro, al tamaño de los textos de al lado); solo el subrayado es rojo. Matrícula y conductor SOLO en la carta de porte (no en los albaranes).
-- Avisos: la pantalla muestra arriba los clientes de SIN RUTA colocados solos por ruta recordada (por si acaso), todas las observaciones (ruta · cliente: texto), una marca «⚠ N obs.» en cada ruta, y un recordatorio al generar.
-- Los PDF originales no se alteran: solo se escribe encima (matrícula, conductor, recuadro de totales, subrayado, relación de albaranes).
-- Al mover albaranes, la «Relación de artículos» de la C.P. se rehace: cantidades = C.P. original + albaranes que llegan − los que se van (todos los artículos, no solo el zumo). Orden por código; las filas a cero desaparecen; las nuevas se copian de la C.P. de origen y la cantidad se reescribe encima. 
-- Peso de la C.P. = original + peso de los que llegan − los que se van. El peso de un albarán sale de sus líneas (kg., NLitros, 750ml, Bja250 = 250 g, Bolsa5kg…). Las unidades sin peso escrito («ud.», «Bdja», «Manojo») se estiman con el peso medio de esas unidades en su C.P. de origen. Comprobado: las tablas de artículos de las 5 C.P. de muestra coinciden exactamente con la suma de sus albaranes.
+| Ruta | Contenido |
+|---|---|
+| `src/core.js` | Lectura de los PDF: campos, tablas y posiciones |
+| `src/app.html` | Interfaz y generación de documentos |
+| `src/sw.js`, `src/manifest.webmanifest`, `src/iconos/` | Aplicación web instalable |
+| `build.js` | Construcción de `dist/` |
+| `android/` | Proyecto Android (Capacitor) |
+| `test/` | Pruebas automáticas |
 
 ## Desarrollo
-- `src/core.js` lectura de PDF (columnas por coordenadas), `src/app.html` pantalla y generación.
-- `node build.js` → `dist/` (mete pdf.js 3.11.174 para leer y pdf-lib 1.17.1 para crear el PDF).
-- El PDF final copia las páginas originales (vectoriales) con pdf-lib y escribe encima; las filas movidas se copian como franja recortada de la página de origen (embedPage + clip).
-- `node test/leer.mjs` (lectura) y `node test/e2e_pospuestos.js` (posponer y recordatorio), `node test/e2e_varias.js` (todo a RutaB: carta de 4 hojas), `node test/cuerpo.js` (lo que se lee de cada hoja de C.P.), `node test/e2e.js` (prueba completa con Edge oculto, salida en `test/salida`) y `python test/paginas.py` (pasa el PDF a imágenes).
-- Muestras reales en `muestras/` (solo en local: con datos de clientes, excluidas del repositorio por .gitignore).
+
+Requisitos: Node.js 18 o superior y Microsoft Edge (para las pruebas).
+
+```
+npm install
+node build.js
+```
+
+`node build.js` genera `dist/` con la aplicación en un único archivo (`index.html` y `Reparto.html`), incluyendo pdf.js 3.11 y pdf-lib 1.17.
+
+### Pruebas
+
+Las pruebas usan PDF de ejemplo en `muestras/` (no incluidos en el repositorio).
+
+| Comando | Comprueba |
+|---|---|
+| `node test/e2e.js` | Flujo completo: carga, asignación, movimientos y generación |
+| `node test/e2e_varias.js` | Carta de porte que ocupa varias hojas |
+| `node test/e2e_pospuestos.js` | Posponer un albarán y su recordatorio |
+| `node test/e2e_recordada.js` | Avisos de ruta recordada y observaciones |
+| `node test/e2e_etiquetas.js` | Limpieza de conductores y matrículas no válidos |
+| `node test/instalable.js` | Aplicación web instalable y uso sin conexión |
+| `python test/paginas.py` | Conversión de los PDF generados a imágenes para revisarlos |
+
+### Android
+
+Requisitos: JDK 17 y SDK de Android 34. Las rutas se indican con `JAVA_HOME` y `ANDROID_HOME`, o en un archivo local `entorno.local.cmd` (no incluido en el repositorio).
+
+```
+apk.cmd
+```
+
+Genera `Reparto.apk` (identificador `app.reparto.albaranes`). Si se regenera la carpeta `android/`, ejecutar `python src/iconos_android.py` para el icono y la pantalla de inicio.
+
+### Versiones
+
+Al publicar una versión se actualiza el número en `build.js` (`VERSION_APP`, visible junto al título), en `android/app/build.gradle` (`versionCode` y `versionName`) y en `package.json`.
+
+## Datos
+
+- Los documentos se procesan en el dispositivo; no se envían a ningún servidor.
+- Las preferencias (rutas de clientes, conductores, matrículas) se guardan en el almacenamiento local del navegador y los albaranes pospuestos en IndexedDB.
+- Los PDF originales no se modifican: la aplicación genera documentos nuevos a partir de ellos.

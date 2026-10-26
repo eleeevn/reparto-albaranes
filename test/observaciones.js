@@ -1,4 +1,3 @@
-// Busca textos sueltos entre la cabecera del albarán y la tabla (observaciones tipo «Entregar antes de las 9»).
 const fs = require('fs'); const core = require('../src/core.js'); const pdfjs = require('pdfjs-dist/legacy/build/pdf.js');
 (async () => {
   for (const f of fs.readdirSync('muestras').filter(n => !n.startsWith('C.P') && n.endsWith('.pdf'))) {

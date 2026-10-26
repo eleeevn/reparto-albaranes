@@ -1,5 +1,3 @@
-// Comprueba los avisos: observaciones (solo las reales) y clientes colocados por ruta recordada.
-// 1ª carga: se manda el primer albarán de SIN RUTA a la primera ruta; 2ª carga: debe colocarse solo y avisar.
 const puppeteer = require('puppeteer-core');
 const fs = require('fs');
 const path = require('path');

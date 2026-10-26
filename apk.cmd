@@ -1,8 +1,8 @@
 @echo off
-rem Regenera Reparto.apk con la última versión de la app (src/ -> dist/ -> android/).
-set JAVA_HOME=C:\herramientas\Android\jdk-17.0.20.1+1
-set ANDROID_HOME=C:\herramientas\Android\sdk
 set RAIZ=%~dp0
+if exist "%RAIZ%entorno.local.cmd" call "%RAIZ%entorno.local.cmd"
+if not defined JAVA_HOME echo Falta JAVA_HOME (JDK 17). & exit /b 1
+if not defined ANDROID_HOME echo Falta ANDROID_HOME (SDK de Android). & exit /b 1
 pushd "%RAIZ%"
 call node build.js || goto :error
 call npx cap sync android || goto :error
