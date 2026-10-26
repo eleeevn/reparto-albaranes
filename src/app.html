@@ -44,6 +44,11 @@
   .msg.ok { background:rgba(21,128,61,.12); color:var(--ok); }
   .msg.obs { background:rgba(180,83,9,.16); color:var(--tx); border-left:4px solid var(--warn); }
   .msg.obs ul { margin:6px 0 0; padding-left:20px; }
+  .msg.rec { background:rgba(30,95,216,.12); color:var(--tx); border-left:4px solid var(--ac); }
+  .msg.rec ul { margin:6px 0 0; padding-left:20px; display:grid; gap:6px; }
+  .modal { position:fixed; inset:0; background:rgba(0,0,0,.45); display:grid; place-items:center; padding:16px; z-index:20; }
+  .modal[hidden] { display:none; }
+  .modal .caja { max-width:440px; width:100%; display:grid; gap:12px; margin:0; }
   #prog { height:6px; background:var(--line); border-radius:3px; overflow:hidden; margin-top:8px; display:none; }
   #prog i { display:block; height:100%; width:0; background:var(--ac); }
   details summary { cursor:pointer; color:var(--mut); }
@@ -89,8 +94,19 @@
     </div>
   </div>
 
+  <details class="card" id="futuros" hidden><summary>Albaranes pospuestos para otros días</summary><div id="futLista"></div></details>
   <details class="card" id="recordados"><summary>Clientes sin ruta recordados</summary><div id="recLista"></div></details>
 </main>
+
+<div id="modalPos" class="modal" hidden>
+  <div class="card caja">
+    <h2>Posponer albarán</h2>
+    <p id="posQue" class="tag"></p>
+    <p>Sale del reparto de hoy (se resta de su carta de porte) y la app te lo recordará el día que elijas, con su PDF guardado.</p>
+    <label class="row">Para el día <input type="date" id="posFecha"></label>
+    <div class="row"><span class="grow"></span><button id="posCancelar">Cancelar</button><button id="posOk" class="main">Posponer</button></div>
+  </div>
+</div>
 
 <script id="pdfjs-src" type="text/plain">/*PDFJS*/</script>
 <script id="pdfjs-worker" type="text/plain">/*WORKER*/</script>
@@ -118,6 +134,36 @@
   function guarda(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
   var memCliente = lee('alb.clienteRuta', {});   // cliente -> nombre de ruta
   var memChofer = lee('alb.chofer', {});         // nombre de ruta -> {conductor, matricula}
+
+  // ---- albaranes pospuestos (IndexedDB: guardan su PDF, que puede no caber en localStorage) ----
+  // Cada uno: {numero, cliente, ruta, fecha (del albarán), para ('AAAA-MM-DD'), pdf (bytes), nombre}
+  var POSP = '__pospuesto__';
+  var pospuestos = {};   // numero -> registro sin el PDF
+  var dos = function (n) { return String(n).padStart(2, '0'); };
+  function isoDe(d) { return d.getFullYear() + '-' + dos(d.getMonth() + 1) + '-' + dos(d.getDate()); }
+  function hoyISO() { return isoDe(new Date()); }
+  function verFecha(iso) { var p = iso.split('-'); return p[2] + '/' + p[1] + '/' + p[0]; }
+  function abreBD() {
+    return new Promise(function (ok, mal) {
+      var r = indexedDB.open('reparto', 1);
+      r.onupgradeneeded = function () { r.result.createObjectStore('pospuestos', { keyPath: 'numero' }); };
+      r.onsuccess = function () { ok(r.result); }; r.onerror = function () { mal(r.error); };
+    });
+  }
+  async function enBD(modo, op) {
+    var db = await abreBD();
+    return new Promise(function (ok, mal) {
+      var tx = db.transaction('pospuestos', modo), r = op(tx.objectStore('pospuestos'));
+      tx.oncomplete = function () { ok(r && r.result); db.close(); }; tx.onerror = function () { mal(tx.error); db.close(); };
+    });
+  }
+  async function leePospuestos() {
+    try {
+      var todos = await enBD('readonly', function (s) { return s.getAll(); }) || [];
+      pospuestos = {};
+      todos.forEach(function (p) { var c = Object.assign({}, p); delete c.pdf; pospuestos[p.numero] = c; });
+    } catch (e) { pospuestos = {}; }
+  }
 
   // ---- estado ----
   var cartas = [];      // {diario, ruta, albaranes[], paginas:[{doc,n,info}], sinRuta, nombreArchivo}
@@ -179,6 +225,8 @@
       }
     });
     orden.sort(function (a, b) { return (porDiario(a).sinRuta ? 1 : 0) - (porDiario(b).sinRuta ? 1 : 0); });
+    // los que se pospusieron para más adelante siguen fuera del reparto aunque se vuelvan a cargar los PDF
+    Object.keys(albs).forEach(function (n) { var p = pospuestos[n]; if (p && p.para > hoyISO() && !asig[n]) asig[n] = POSP; });
     aplicaRecordados();
     pinta();
   }
@@ -319,6 +367,21 @@
       var esMan = +m[0] === man.getDate() && +m[1] === man.getMonth() + 1 && +m[2] === man.getFullYear();
       av.push('<div class="msg ' + (esMan ? 'ok' : 'warn') + '">Reparto para el ' + esc(fa) + (esMan ? ' (mañana). Las fechas, logos y datos de los documentos se respetan tal cual.' : ' — ojo: no es mañana. Las fechas se imprimen tal cual vienen en los documentos.') + '</div>');
     }
+    // Recordatorio: albaranes pospuestos para hoy (o ya pasados) que aún no se han atendido
+    var toca = Object.keys(pospuestos).map(function (k) { return pospuestos[k]; }).filter(function (p) { return p.para <= hoyISO(); })
+      .sort(function (a, b) { return a.para < b.para ? -1 : 1; });
+    if (toca.length) av.unshift('<div class="msg rec">📅 <b>' + toca.length + (toca.length > 1 ? ' albaranes pospuestos' : ' albarán pospuesto') + ' para hoy</b>:<ul>' + toca.map(function (p) {
+      var yaCargado = albs[p.numero] && asig[p.numero] !== POSP;
+      return '<li><b>' + esc(p.cliente) + '</b> <span class="tag">(' + esc(p.numero) + ', venía en ' + esc(p.ruta || '—') + ', albarán del ' + esc(p.fecha || '—') + (p.para < hoyISO() ? ', era para el ' + verFecha(p.para) : '') + ')</span><br>' +
+        (yaCargado ? '<span class="tag">Ya viene en los PDF cargados. </span>' : '<button class="mini" data-posanade="' + esc(p.numero) + '">Añadir al reparto</button> ') +
+        '<button class="mini" data-posbaja="' + esc(p.numero) + '">Descargar</button> <button class="mini" data-posquita="' + esc(p.numero) + '">Quitar</button></li>';
+    }).join('') + '</ul></div>');
+    // Pospuestos hoy (salen del reparto de hoy)
+    var pos = Object.keys(albs).filter(function (n) { return asig[n] === POSP; });
+    if (pos.length) html += '<div class="card"><h2>Pospuestos (no se imprimen hoy)</h2><table>' + pos.map(function (n) {
+      var p = pospuestos[n];
+      return '<tr><td>' + esc(n) + '</td><td>' + esc(albs[n].cliente) + '</td><td class="n">para el ' + (p ? verFecha(p.para) : '…') + '</td><td class="n"><button class="mini" data-posquita="' + esc(n) + '">Deshacer</button></td></tr>';
+    }).join('') + '</table></div>';
     // Albaranes sin carta de porte
     var sc = sinAsignar();
     if (sc.length) {
@@ -354,6 +417,7 @@
     var incl = orden.filter(function (d) { return chofer[d].incluir && albsDe(d).length; }).length;
     $('genInfo').textContent = sc.length ? 'Elige ruta para los albaranes sin carta de porte para poder generar.' : incl + ' ruta(s) a imprimir';
     pintaRecordados();
+    pintaFuturos();
   }
 
   function selectorRuta(num, actual) {
@@ -362,6 +426,7 @@
       var c = porDiario(d);
       if (d !== actual) o += '<option value="' + esc(d) + '">' + esc(c.ruta || c.nombreArchivo) + '</option>';
     });
+    o += '<option value="' + POSP + '">Posponer a otro día…</option>';
     return '<select data-mover="' + esc(num) + '">' + o + '</select>';
   }
 
@@ -426,7 +491,8 @@
 
   $('rutas').addEventListener('change', function (e) {
     var t = e.target;
-    if (t.dataset.mover != null) mover(t.dataset.mover, t.value);
+    if (t.dataset.mover != null && t.value === POSP) { var num = t.dataset.mover; t.value = ''; abrePosponer(num); }
+    else if (t.dataset.mover != null) mover(t.dataset.mover, t.value);
     else if (t.dataset.incl) { chofer[t.dataset.incl].incluir = t.checked; pinta(); }
     else if (t.dataset.cond || t.dataset.mat) {
       var d = t.dataset.cond || t.dataset.mat, ch = chofer[d];
@@ -848,7 +914,88 @@
   });
   $('gen').addEventListener('click', function () { genera().catch(function (e) { avisa('Error al generar: ' + e.message, 'bad'); $('gen').disabled = false; }); });
 
+  // ---- posponer albaranes ----
+  var posNum = null;
+  function abrePosponer(n) {
+    posNum = n;
+    var a = albs[n], d = new Date(), m = (a.fecha || '').split('/');
+    if (m.length === 3) d = new Date(+m[2], +m[1] - 1, +m[0]);
+    d.setDate(d.getDate() + 1);                          // por defecto: el día siguiente al del albarán
+    var man = new Date(); man.setDate(man.getDate() + 1);
+    if (d < man) d = man;
+    $('posFecha').min = isoDe(man); $('posFecha').value = isoDe(d);
+    $('posQue').textContent = n + ' · ' + a.cliente + (a.fecha ? ' · albarán del ' + a.fecha : '');
+    $('modalPos').hidden = false;
+  }
+  // PDF solo con las hojas de un albarán, para guardarlo hasta el día que toque
+  async function pdfAlbaran(n) {
+    var out = await PL.PDFDocument.create(), libs = new Map();
+    for (var i = 0; i < albs[n].paginas.length; i++) {
+      var pg = albs[n].paginas[i];
+      if (!libs.has(pg.doc)) libs.set(pg.doc, await PL.PDFDocument.load(pg.doc._bytes));
+      out.addPage((await out.copyPages(libs.get(pg.doc), [pg.n - 1]))[0]);
+    }
+    return out.save();
+  }
+  $('posCancelar').addEventListener('click', function () { $('modalPos').hidden = true; });
+  $('posOk').addEventListener('click', async function () {
+    var n = posNum, para = $('posFecha').value;
+    if (!para || para <= hoyISO()) { $('posFecha').focus(); return; }
+    $('posOk').disabled = true;
+    try {
+      var a = albs[n], c = porDiario(destino(n));
+      var reg = { numero: n, cliente: a.cliente, ruta: c ? c.ruta : '', fecha: a.fecha, para: para, nombre: 'Albarán ' + n + ' - ' + nombreArchivo(a.cliente || '') + '.pdf', pdf: await pdfAlbaran(n) };
+      await enBD('readwrite', function (s) { return s.put(reg); });
+      delete reg.pdf; pospuestos[n] = reg;
+      asig[n] = POSP; a.auto = false;
+      $('modalPos').hidden = true;
+      pinta();
+    } catch (e) { avisa('No se pudo posponer: ' + (e && e.message || e), 'bad'); }
+    $('posOk').disabled = false;
+  });
+
+  async function quitaPospuesto(n) {
+    try { await enBD('readwrite', function (s) { return s.delete(n); }); } catch (e) {}
+    delete pospuestos[n];
+    if (asig[n] === POSP) delete asig[n];   // vuelve a su ruta de hoy
+    pinta();
+  }
+  async function leePdfPospuesto(n) {
+    var r = await enBD('readonly', function (s) { return s.get(n); });
+    return r && new File([r.pdf], r.nombre, { type: 'application/pdf' });
+  }
+  // el día que toca: se carga como un albarán más y, si su ruta existe hoy, va directo a ella
+  async function anadePospuesto(n) {
+    var p = pospuestos[n], f = await leePdfPospuesto(n);
+    if (!f) return quitaPospuesto(n);
+    await enBD('readwrite', function (s) { return s.delete(n); });
+    delete pospuestos[n];
+    await cargar([f]);
+    var c = cartas.filter(function (x) { return x.ruta === p.ruta && !x.sinRuta; })[0];
+    if (c && albs[n] && !destino(n)) { asig[n] = c.diario; pinta(); }
+    // se añade arriba sin borrar los demás avisos
+    $('avisos').insertAdjacentHTML('afterbegin', '<div class="msg ok">' + esc(c ? 'Añadido ' + n + ' (' + p.cliente + ') a ' + c.ruta + ', su ruta de antes. Muévelo si va en otra.' : 'Añadido ' + n + ' (' + p.cliente + '): elige su ruta en «Sin carta de porte».') + '</div>');
+    $('avisos').scrollIntoView({ block: 'start' });
+  }
+  function pintaFuturos() {
+    var fut = Object.keys(pospuestos).map(function (k) { return pospuestos[k]; }).filter(function (p) { return p.para > hoyISO(); })
+      .sort(function (a, b) { return a.para < b.para ? -1 : 1; });
+    $('futuros').hidden = !fut.length;
+    $('futuros').querySelector('summary').textContent = 'Albaranes pospuestos para otros días (' + fut.length + ')';
+    $('futLista').innerHTML = '<table>' + fut.map(function (p) {
+      return '<tr><td>' + verFecha(p.para) + '</td><td>' + esc(p.cliente) + ' <span class="tag">(' + esc(p.numero) + ', ' + esc(p.ruta || '—') + ')</span></td>' +
+        '<td class="n"><button class="mini" data-posbaja="' + esc(p.numero) + '">Descargar</button> <button class="mini" data-posquita="' + esc(p.numero) + '">Quitar</button></td></tr>';
+    }).join('') + '</table>';
+  }
+  document.addEventListener('click', function (e) {
+    var d = e.target.dataset || {};
+    if (d.posquita) quitaPospuesto(d.posquita);
+    if (d.posanade) anadePospuesto(d.posanade).catch(function (er) { avisa('No se pudo añadir: ' + er.message, 'bad'); });
+    if (d.posbaja) leePdfPospuesto(d.posbaja).then(function (f) { if (f) return baja(f); }).catch(function (er) { avisa('No se pudo descargar: ' + er.message, 'bad'); });
+  });
+
   pintaRecordados();
+  leePospuestos().then(pinta);
 })();
 </script>
 </body>
